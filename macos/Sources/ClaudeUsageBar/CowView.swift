@@ -1,0 +1,413 @@
+import SwiftUI
+
+struct CowView: View {
+    let cow: RepoCow
+    let facingRight: Bool
+    var isGrazing: Bool = false
+    var animationDate: Date = Date()
+    @State private var isHovered = false
+
+    private var tier: HealthTier { HealthTier(health: cow.health) }
+    private var appearance: CowAppearance { cow.appearance }
+
+    private var legPhase: Double {
+        guard !isGrazing else { return 0 }
+        var h: UInt64 = 5381
+        for byte in cow.id.utf8 {
+            h = ((h << 5) &+ h) &+ UInt64(byte)
+        }
+        let hashOffset = Double(h % 1000) / 1000.0 * .pi * 2
+        return animationDate.timeIntervalSinceReferenceDate * .pi * 8 + hashOffset
+    }
+
+    var body: some View {
+        VStack(spacing: 2) {
+            if tier == .dead {
+                gravestoneView
+            } else {
+                ZStack {
+                    // Ground shadow
+                    Ellipse()
+                        .fill(.black.opacity(0.12))
+                        .frame(width: 28, height: 6)
+                        .blur(radius: 1)
+                        .offset(y: 14)
+
+                    cowSprite
+                        .scaleEffect(x: facingRight ? 1 : -1, y: 1)
+                }
+            }
+            healthBar
+        }
+        .frame(width: 44, height: 44)
+        .overlay(alignment: .top) {
+            if isHovered {
+                nameLabel
+                    .offset(y: -20)
+                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                    .zIndex(100)
+            }
+        }
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovered = hovering
+            }
+        }
+    }
+
+    // MARK: - Cow Sprite
+
+    private var cowSprite: some View {
+        ZStack {
+            // Tail (opposite side from head)
+            RoundedRectangle(cornerRadius: 1)
+                .fill(Color.brown.opacity(0.6))
+                .frame(width: 2, height: appearance.tailLength)
+                .rotationEffect(.degrees(-20))
+                .offset(x: -18, y: -2)
+
+            // Legs with walking animation
+            HStack(spacing: 18) {
+                VStack(spacing: 12) {
+                    Rectangle().fill(Color.brown.opacity(0.7)).frame(width: 4, height: 6)
+                        .offset(y: sin(legPhase) * 1.5)
+                    Rectangle().fill(Color.brown.opacity(0.7)).frame(width: 4, height: 6)
+                        .offset(y: sin(legPhase + .pi) * 1.5)
+                }
+                VStack(spacing: 12) {
+                    Rectangle().fill(Color.brown.opacity(0.7)).frame(width: 4, height: 6)
+                        .offset(y: sin(legPhase + .pi) * 1.5)
+                    Rectangle().fill(Color.brown.opacity(0.7)).frame(width: 4, height: 6)
+                        .offset(y: sin(legPhase) * 1.5)
+                }
+            }
+            .offset(y: 5)
+
+            // Body
+            RoundedRectangle(cornerRadius: 5)
+                .fill(tier.bodyColor)
+                .frame(width: 30, height: 18)
+                .shadow(color: .black.opacity(0.15), radius: 1, y: 1)
+                .overlay {
+                    // Subtle body tint
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(appearance.bodyHueShift > 0
+                              ? Color.orange.opacity(abs(appearance.bodyHueShift) + 0.02)
+                              : Color.blue.opacity(abs(appearance.bodyHueShift) + 0.02))
+                }
+                .overlay {
+                    // Unique spots per cow
+                    ZStack {
+                        ForEach(0..<3, id: \.self) { i in
+                            Circle()
+                                .fill(tier.spotColor)
+                                .frame(width: appearance.spotSizes[i], height: appearance.spotSizes[i])
+                                .offset(x: appearance.spotOffsets[i].0, y: appearance.spotOffsets[i].1)
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                }
+
+            // Head
+            RoundedRectangle(cornerRadius: 4)
+                .fill(tier.bodyColor)
+                .frame(width: 13, height: 13)
+                .shadow(color: .black.opacity(0.1), radius: 0.5, y: 0.5)
+                .overlay { faceView }
+                .offset(x: 18, y: isGrazing ? -2 : -5)
+
+            // Grazing tuft
+            if isGrazing {
+                grazingTuft
+                    .offset(x: 24, y: 2)
+            }
+
+            // Ears
+            Ellipse()
+                .fill(Color.pink.opacity(0.5))
+                .frame(width: 4, height: 5)
+                .offset(x: 17, y: isGrazing ? -11 : -14)
+            Ellipse()
+                .fill(Color.pink.opacity(0.5))
+                .frame(width: 4, height: 5)
+                .offset(x: 22, y: isGrazing ? -10 : -13)
+        }
+        .frame(width: 44, height: 34)
+    }
+
+    // MARK: - Grazing Tuft
+
+    private var grazingTuft: some View {
+        ZStack {
+            Ellipse()
+                .fill(Color(red: 0.2, green: 0.6, blue: 0.15))
+                .frame(width: 4, height: 3)
+                .offset(x: -2, y: 1)
+            Ellipse()
+                .fill(Color(red: 0.25, green: 0.55, blue: 0.2))
+                .frame(width: 3, height: 4)
+                .offset(x: 2, y: -1)
+        }
+    }
+
+    // MARK: - Face
+
+    @ViewBuilder
+    private var faceView: some View {
+        ZStack {
+            HStack(spacing: 3) {
+                eyeView
+                eyeView
+            }
+            .offset(y: -1.5)
+
+            mouthView
+                .offset(y: 3.5)
+        }
+    }
+
+    @ViewBuilder
+    private var eyeView: some View {
+        switch tier {
+        case .thriving:
+            ZStack {
+                Circle().fill(.black).frame(width: 2.5, height: 2.5)
+                Circle().fill(.white).frame(width: 1, height: 1).offset(x: 0.5, y: -0.5)
+            }
+        case .happy:
+            Circle().fill(.black).frame(width: 2.5, height: 2.5)
+        case .meh:
+            Circle().fill(.black).frame(width: 2.5, height: 2.5)
+                .clipShape(Rectangle().offset(y: 0.6))
+        case .sad:
+            VStack(spacing: 0) {
+                Rectangle().fill(.black).frame(width: 3, height: 0.6)
+                    .rotationEffect(.degrees(-10))
+                Circle().fill(.black).frame(width: 2.5, height: 2.5)
+            }
+        case .dead:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var mouthView: some View {
+        switch tier {
+        case .thriving:
+            SmileShape(isSmile: true)
+                .stroke(.black, lineWidth: 0.8)
+                .frame(width: 4, height: 2)
+        case .happy, .meh:
+            Rectangle().fill(.black).frame(width: 4, height: 0.6)
+        case .sad:
+            SmileShape(isSmile: false)
+                .stroke(.black, lineWidth: 0.8)
+                .frame(width: 4, height: 2)
+        case .dead:
+            EmptyView()
+        }
+    }
+
+    // MARK: - Gravestone
+
+    private var gravestoneView: some View {
+        ZStack {
+            UnevenRoundedRectangle(
+                topLeadingRadius: 6, bottomLeadingRadius: 1,
+                bottomTrailingRadius: 1, topTrailingRadius: 6
+            )
+            .fill(Color(white: 0.35 + appearance.bodyHueShift))
+            .frame(width: 24, height: 30)
+            .overlay {
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 6, bottomLeadingRadius: 1,
+                    bottomTrailingRadius: 1, topTrailingRadius: 6
+                )
+                .stroke(Color(white: 0.2), lineWidth: 0.5)
+            }
+            .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
+
+            VStack(spacing: 1) {
+                Text("RIP")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.8))
+                Text(String(cow.name.prefix(5)))
+                    .font(.system(size: 5, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.5))
+            }
+            .offset(y: -2)
+        }
+        .frame(width: 44, height: 34)
+    }
+
+    // MARK: - Health Bar
+
+    private var healthBar: some View {
+        Capsule()
+            .fill(Color.black.opacity(0.2))
+            .frame(width: 32, height: 5)
+            .overlay(alignment: .leading) {
+                Capsule()
+                    .fill(healthBarColor)
+                    .frame(width: max(2, 32 * cow.health / 100), height: 5)
+            }
+            .overlay {
+                Capsule()
+                    .stroke(Color.black.opacity(0.3), lineWidth: 0.5)
+            }
+    }
+
+    private var healthBarColor: Color {
+        switch tier {
+        case .thriving: .green
+        case .happy:    .green.opacity(0.8)
+        case .meh:      .yellow
+        case .sad:      .orange
+        case .dead:     .red
+        }
+    }
+
+    // MARK: - Hover Label
+
+    private var nameLabel: some View {
+        HStack(spacing: 3) {
+            Text(String(cow.name.prefix(14)))
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+            Text(String(format: "%.0f%%", cow.health))
+                .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.75))
+        }
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .background(
+            Capsule()
+                .fill(.black.opacity(0.7))
+                .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
+        )
+    }
+}
+
+// MARK: - Cow Detail View
+
+struct CowDetailView: View {
+    let cow: RepoCow
+
+    private var tier: HealthTier { HealthTier(health: cow.health) }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            CowView(cow: cow, facingRight: true)
+                .scaleEffect(1.5)
+                .frame(width: 66, height: 66)
+
+            Text(cow.name)
+                .font(.headline)
+
+            Text(cow.owner)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 4) {
+                Circle().fill(tierColor).frame(width: 8, height: 8)
+                Text(tier.rawValue.capitalized)
+                    .font(.caption.weight(.medium))
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(tierColor.opacity(0.15)))
+
+            HStack {
+                Text("Health:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(String(format: "%.0f%%", cow.health))
+                    .font(.caption.weight(.semibold))
+            }
+
+            HStack {
+                Text("Last commit:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(relativeDate(cow.lastCommitDate))
+                    .font(.caption)
+            }
+
+            if !cow.url.isEmpty, let url = URL(string: cow.url) {
+                Link(destination: url) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.right.square")
+                        Text("Open on GitHub")
+                    }
+                    .font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+        .padding()
+        .frame(width: 200)
+    }
+
+    private var tierColor: Color {
+        switch tier {
+        case .thriving: .green
+        case .happy: .mint
+        case .meh: .yellow
+        case .sad: .orange
+        case .dead: .red
+        }
+    }
+
+    private func relativeDate(_ date: Date) -> String {
+        let seconds = Int(-date.timeIntervalSinceNow)
+        if seconds < 60 { return "\(seconds)s ago" }
+        let minutes = seconds / 60
+        if minutes < 60 { return "\(minutes)m ago" }
+        let hours = minutes / 60
+        if hours < 24 { return "\(hours)h ago" }
+        let days = hours / 24
+        if days < 30 { return "\(days)d ago" }
+        let months = days / 30
+        return "\(months)mo ago"
+    }
+}
+
+// MARK: - Smile Shape
+
+struct SmileShape: Shape {
+    let isSmile: Bool
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        if isSmile {
+            path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+            path.addQuadCurve(
+                to: CGPoint(x: rect.maxX, y: rect.minY),
+                control: CGPoint(x: rect.midX, y: rect.maxY)
+            )
+        } else {
+            path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+            path.addQuadCurve(
+                to: CGPoint(x: rect.maxX, y: rect.maxY),
+                control: CGPoint(x: rect.midX, y: rect.minY)
+            )
+        }
+        return path
+    }
+}
+
+// MARK: - Previews
+
+#Preview("All Tiers") {
+    HStack(spacing: 16) {
+        CowView(cow: RepoCow(name: "thriving-repo", owner: "test", url: "", health: 95, lastCommitDate: Date(), lastDecayDate: Date(), position: .zero), facingRight: true)
+        CowView(cow: RepoCow(name: "happy-repo", owner: "test", url: "", health: 70, lastCommitDate: Date(), lastDecayDate: Date(), position: .zero), facingRight: false)
+        CowView(cow: RepoCow(name: "meh-repo", owner: "test", url: "", health: 50, lastCommitDate: Date(), lastDecayDate: Date(), position: .zero), facingRight: true)
+        CowView(cow: RepoCow(name: "sad-repo", owner: "test", url: "", health: 30, lastCommitDate: Date(), lastDecayDate: Date(), position: .zero), facingRight: false)
+        CowView(cow: RepoCow(name: "dead-repo", owner: "test", url: "", health: 5, lastCommitDate: Date(), lastDecayDate: Date(), position: .zero), facingRight: true)
+    }
+    .padding()
+    .background(Color(red: 0.35, green: 0.65, blue: 0.25))
+}
