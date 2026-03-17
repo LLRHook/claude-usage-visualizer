@@ -9,3 +9,4 @@ xcuserdata/
 *.dSYM
 __pycache__/
 *.pyc
+.claude/

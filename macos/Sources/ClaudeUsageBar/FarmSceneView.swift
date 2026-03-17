@@ -6,6 +6,8 @@ struct FarmSceneView: View {
     @State private var cowStates: [String: CowAnimState] = [:]
     @State private var selectedCow: RepoCow?
     @State private var filterTier: HealthTier?
+    @State private var showListView = false
+    @State private var sortOrder: RepoSortOrder = .health
 
     private let grassColor = Color(red: 0.35, green: 0.65, blue: 0.25)
     private let fenceColor = Color(red: 0.55, green: 0.35, blue: 0.15)
@@ -19,10 +21,27 @@ struct FarmSceneView: View {
     private var viewportWidth: CGFloat { isExpanded ? 400 : 290 }
     private var viewportHeight: CGFloat { isExpanded ? 400 : 240 }
 
+    private var filteredCows: [RepoCow] {
+        let base = filterTier == nil
+            ? farmService.cows
+            : farmService.cows.filter { HealthTier(health: $0.health) == filterTier }
+        switch sortOrder {
+        case .health:
+            return base.sorted { $0.health > $1.health }
+        case .name:
+            return base.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        case .lastCommit:
+            return base.sorted { $0.lastCommitDate > $1.lastCommitDate }
+        }
+    }
+
     var body: some View {
         VStack(spacing: 10) {
             if farmService.cows.isEmpty && !farmService.isScanning {
                 emptyState
+            } else if showListView {
+                repoListView
+                statsBar
             } else {
                 farmCanvas
                 statsBar
@@ -67,9 +86,33 @@ struct FarmSceneView: View {
                 Spacer()
 
                 Menu {
-                    Button("All") { filterTier = nil }
-                    ForEach(HealthTier.allCases, id: \.self) { tier in
-                        Button(tier.rawValue.capitalized) { filterTier = tier }
+                    Section("Filter") {
+                        Button {
+                            filterTier = nil
+                        } label: {
+                            if filterTier == nil { Label("All", systemImage: "checkmark") }
+                            else { Text("All") }
+                        }
+                        ForEach(HealthTier.allCases, id: \.self) { tier in
+                            Button {
+                                filterTier = tier
+                            } label: {
+                                if filterTier == tier { Label(tier.rawValue.capitalized, systemImage: "checkmark") }
+                                else { Text(tier.rawValue.capitalized) }
+                            }
+                        }
+                    }
+                    if showListView {
+                        Section("Sort") {
+                            ForEach(RepoSortOrder.allCases, id: \.self) { order in
+                                Button {
+                                    sortOrder = order
+                                } label: {
+                                    if sortOrder == order { Label(order.label, systemImage: "checkmark") }
+                                    else { Text(order.label) }
+                                }
+                            }
+                        }
                     }
                 } label: {
                     HStack(spacing: 4) {
@@ -78,23 +121,37 @@ struct FarmSceneView: View {
                     }
                     .font(.caption)
                 }
+                .menuStyle(.borderlessButton)
                 .fixedSize()
 
                 Button {
-                    withAnimation(.spring(duration: 0.35)) {
-                        isExpanded.toggle()
+                    withAnimation(.spring(duration: 0.25)) {
+                        showListView.toggle()
                     }
                 } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: isExpanded
-                              ? "arrow.down.right.and.arrow.up.left"
-                              : "arrow.up.left.and.arrow.down.right")
-                        Text(isExpanded ? "Compact" : "Full View")
-                    }
-                    .font(.caption)
+                    Image(systemName: showListView ? "circle.grid.2x2" : "list.bullet")
+                        .font(.caption)
+                        .frame(width: 14)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .help(showListView ? "Farm View" : "List View")
+
+                if !showListView {
+                    Button {
+                        withAnimation(.spring(duration: 0.35)) {
+                            isExpanded.toggle()
+                        }
+                    } label: {
+                        Image(systemName: isExpanded
+                              ? "arrow.down.right.and.arrow.up.left"
+                              : "arrow.up.left.and.arrow.down.right")
+                            .font(.caption)
+                            .frame(width: 14)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
             }
             .padding(.top, 4)
         }
@@ -512,6 +569,24 @@ struct FarmSceneView: View {
         }
     }
 
+    // MARK: - Repo List View
+
+    private var repoListView: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(filteredCows) { cow in
+                    RepoListRow(cow: cow)
+                        .onTapGesture { selectedCow = cow }
+                }
+            }
+        }
+        .frame(height: 240)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .popover(item: $selectedCow) { cow in
+            CowDetailView(cow: cow)
+        }
+    }
+
     // MARK: - Helpers
 
     private func relativeTime(since date: Date) -> String {
@@ -519,5 +594,91 @@ struct FarmSceneView: View {
         if seconds < 60 { return "Scanned \(seconds)s ago" }
         let minutes = seconds / 60
         return "Scanned \(minutes)m ago"
+    }
+}
+
+// MARK: - Sort Order
+
+enum RepoSortOrder: String, CaseIterable {
+    case health, name, lastCommit
+
+    var label: String {
+        switch self {
+        case .health: "Health"
+        case .name: "Name"
+        case .lastCommit: "Last Commit"
+        }
+    }
+}
+
+// MARK: - Repo List Row
+
+struct RepoListRow: View {
+    let cow: RepoCow
+
+    private var tier: HealthTier { HealthTier(health: cow.health) }
+
+    private var tierColor: Color {
+        switch tier {
+        case .thriving: .green
+        case .happy: .mint
+        case .meh: .yellow
+        case .sad: .orange
+        case .dead: .red
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(tierColor)
+                .frame(width: 8, height: 8)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(cow.name)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+                Text(cow.owner)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(String(format: "%.0f%%", cow.health))
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(tierColor)
+                Text(relativeDate(cow.lastCommitDate))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            // Mini health bar
+            Capsule()
+                .fill(.gray.opacity(0.15))
+                .frame(width: 36, height: 4)
+                .overlay(alignment: .leading) {
+                    Capsule()
+                        .fill(tierColor)
+                        .frame(width: max(1, 36 * cow.health / 100), height: 4)
+                }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.primary.opacity(0.001)) // hit target
+        .contentShape(Rectangle())
+    }
+
+    private func relativeDate(_ date: Date) -> String {
+        let seconds = Int(-date.timeIntervalSinceNow)
+        if seconds < 60 { return "\(seconds)s ago" }
+        let minutes = seconds / 60
+        if minutes < 60 { return "\(minutes)m ago" }
+        let hours = minutes / 60
+        if hours < 24 { return "\(hours)h ago" }
+        let days = hours / 24
+        return "\(days)d ago"
     }
 }
