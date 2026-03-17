@@ -176,26 +176,14 @@ final class RepoFarmService: ObservableObject {
 
             if var cow = existingByID[key] {
                 // Update existing cow — recompute baseHealth from commit activity
-                let recentCommits = activities[key] ?? 0
-                // Diminishing returns: log scale for high-activity repos
-                // 1 commit → +8, 5 → +26, 10 → +35, 50 → +55
-                let commitBoost = recentCommits > 0
-                    ? min(60, 8.0 * log2(Double(recentCommits) + 1))
-                    : 0.0
-                // baseHealth = commit-based floor + boost, anchored to now
-                // This sets the starting point; continuous decay runs from lastCommitDate
-                let newBase = min(100, max(10, 30 + commitBoost))
+                let newBase = baseHealth(for: activities[key] ?? 0)
                 cow.baseHealth = max(cow.baseHealth, newBase) // never penalize on scan
                 cow.lastDecayDate = now
                 cow.lastCommitDate = pushedAt
                 newCows.append(cow)
             } else {
                 // New cow — baseHealth from recent activity
-                let recentCommits = activities[key] ?? 0
-                let commitBoost = recentCommits > 0
-                    ? min(60, 8.0 * log2(Double(recentCommits) + 1))
-                    : 0.0
-                let baseHealth = min(100, max(10, 30 + commitBoost))
+                let baseHealth = baseHealth(for: activities[key] ?? 0)
                 let position = randomPosition(avoiding: newCows.map(\.position))
                 let cow = RepoCow(
                     name: repo.name,
@@ -229,6 +217,13 @@ final class RepoFarmService: ObservableObject {
             x: CGFloat.random(in: penBounds.minX + 20...penBounds.maxX - 20),
             y: CGFloat.random(in: penBounds.minY + 20...penBounds.maxY - 20)
         )
+    }
+
+    /// Diminishing returns: log scale for high-activity repos
+    /// 1 commit → +8, 5 → +26, 10 → +35, 50 → +55
+    private func baseHealth(for recentCommits: Int) -> Double {
+        let boost = recentCommits > 0 ? min(60, 8.0 * log2(Double(recentCommits) + 1)) : 0.0
+        return min(100, max(10, 30 + boost))
     }
 
     // MARK: - Position Migration

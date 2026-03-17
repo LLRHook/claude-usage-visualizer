@@ -178,6 +178,39 @@ enum HealthTier: String, CaseIterable, Hashable {
         case .dead:     Color(white: 0.35)
         }
     }
+
+    var tierColor: Color {
+        switch self {
+        case .thriving: .green
+        case .happy:    .mint
+        case .meh:      .yellow
+        case .sad:      .orange
+        case .dead:     .red
+        }
+    }
+
+    /// Color for utilization percentage (usage gauges, menu bar dot)
+    static func utilizationColor(for value: Double) -> Color {
+        if value < 40 { return .green }
+        if value < 60 { return .yellow }
+        if value < 80 { return .orange }
+        return .red
+    }
+}
+
+// MARK: - Shared Utilities
+
+func relativeDate(_ date: Date) -> String {
+    let seconds = Int(-date.timeIntervalSinceNow)
+    if seconds < 60 { return "\(seconds)s ago" }
+    let minutes = seconds / 60
+    if minutes < 60 { return "\(minutes)m ago" }
+    let hours = minutes / 60
+    if hours < 24 { return "\(hours)h ago" }
+    let days = hours / 24
+    if days < 30 { return "\(days)d ago" }
+    let months = days / 30
+    return "\(months)mo ago"
 }
 
 // MARK: - gh API Response Types (transient)

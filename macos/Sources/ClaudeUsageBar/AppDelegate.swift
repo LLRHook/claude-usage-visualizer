@@ -80,10 +80,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func dotColor(for utilization: Double) -> NSColor {
-        if utilization < 40 { return .systemGreen }
-        if utilization < 60 { return .systemYellow }
-        if utilization < 80 { return .systemOrange }
-        return .systemRed
+        NSColor(HealthTier.utilizationColor(for: utilization))
     }
 
     // MARK: - Click Handling

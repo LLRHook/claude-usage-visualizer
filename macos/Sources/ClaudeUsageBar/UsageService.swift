@@ -40,6 +40,7 @@ final class UsageService: ObservableObject {
     private var codeVerifier: String?
     /// Tracks the reset date we last notified for, to avoid repeat alerts in the same window
     private var lastNotifiedResetDate: Date?
+    private var notificationsAuthorized = false
     private var oauthState: String?
     private var credentials: StoredCredentials?
     private var isRefreshing = false
@@ -54,12 +55,19 @@ final class UsageService: ObservableObject {
     // MARK: - Lifecycle
 
     func loadCredentials() {
+        requestNotificationAuth()
         if let creds = store.load() {
             credentials = creds
             isAuthenticated = true
             startPolling()
             Task { await fetchProfile() }
             Task { await fetchUsage() }
+        }
+    }
+
+    private func requestNotificationAuth() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            Task { @MainActor in self.notificationsAuthorized = granted }
         }
     }
 
@@ -323,38 +331,35 @@ final class UsageService: ObservableObject {
     // MARK: - Usage Alerts
 
     private func checkUsageAlert() {
-        guard alertsEnabled,
+        guard alertsEnabled, notificationsAuthorized,
               let usage = currentUsage,
               let fiveHour = usage.fiveHour,
               let utilization = fiveHour.utilization,
               utilization >= 80 else { return }
 
-        // Only notify once per reset window
-        let resetDate = fiveHour.resetDate
-        if let resetDate, let lastNotified = lastNotifiedResetDate, lastNotified == resetDate {
-            return // Already notified for this window
+        // Only notify once per reset window (compare at minute granularity to avoid float drift)
+        if let resetDate = fiveHour.resetDate, let lastNotified = lastNotifiedResetDate {
+            let resetMinute = floor(resetDate.timeIntervalSince1970 / 60)
+            let notifiedMinute = floor(lastNotified.timeIntervalSince1970 / 60)
+            if resetMinute == notifiedMinute { return }
         }
 
-        lastNotifiedResetDate = resetDate
+        lastNotifiedResetDate = fiveHour.resetDate
         sendUsageNotification(utilization: utilization)
     }
 
     private func sendUsageNotification(utilization: Double) {
-        let center = UNUserNotificationCenter.current()
-        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
-            guard granted else { return }
-            let content = UNMutableNotificationContent()
-            content.title = "Claude Usage Alert"
-            content.body = String(format: "5-hour usage at %.0f%%. Consider slowing down to avoid rate limiting.", utilization)
-            content.sound = .default
+        let content = UNMutableNotificationContent()
+        content.title = "Claude Usage Alert"
+        content.body = String(format: "5-hour usage at %.0f%%. Consider slowing down to avoid rate limiting.", utilization)
+        content.sound = .default
 
-            let request = UNNotificationRequest(
-                identifier: "usage-alert-\(Date().timeIntervalSince1970)",
-                content: content,
-                trigger: nil // deliver immediately
-            )
-            center.add(request)
-        }
+        let request = UNNotificationRequest(
+            identifier: "usage-alert-\(Date().timeIntervalSince1970)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
     }
 
     // MARK: - PKCE Helpers

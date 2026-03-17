@@ -310,13 +310,13 @@ struct CowDetailView: View {
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 4) {
-                Circle().fill(tierColor).frame(width: 8, height: 8)
+                Circle().fill(tier.tierColor).frame(width: 8, height: 8)
                 Text(tier.rawValue.capitalized)
                     .font(.caption.weight(.medium))
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
-            .background(Capsule().fill(tierColor.opacity(0.15)))
+            .background(Capsule().fill(tier.tierColor.opacity(0.15)))
 
             HStack {
                 Text("Health:")
@@ -350,28 +350,6 @@ struct CowDetailView: View {
         .frame(width: 200)
     }
 
-    private var tierColor: Color {
-        switch tier {
-        case .thriving: .green
-        case .happy: .mint
-        case .meh: .yellow
-        case .sad: .orange
-        case .dead: .red
-        }
-    }
-
-    private func relativeDate(_ date: Date) -> String {
-        let seconds = Int(-date.timeIntervalSinceNow)
-        if seconds < 60 { return "\(seconds)s ago" }
-        let minutes = seconds / 60
-        if minutes < 60 { return "\(minutes)m ago" }
-        let hours = minutes / 60
-        if hours < 24 { return "\(hours)h ago" }
-        let days = hours / 24
-        if days < 30 { return "\(days)d ago" }
-        let months = days / 30
-        return "\(months)mo ago"
-    }
 }
 
 // MARK: - Smile Shape

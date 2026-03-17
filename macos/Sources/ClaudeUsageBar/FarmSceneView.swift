@@ -618,20 +618,10 @@ struct RepoListRow: View {
 
     private var tier: HealthTier { HealthTier(health: cow.health) }
 
-    private var tierColor: Color {
-        switch tier {
-        case .thriving: .green
-        case .happy: .mint
-        case .meh: .yellow
-        case .sad: .orange
-        case .dead: .red
-        }
-    }
-
     var body: some View {
         HStack(spacing: 8) {
             Circle()
-                .fill(tierColor)
+                .fill(tier.tierColor)
                 .frame(width: 8, height: 8)
 
             VStack(alignment: .leading, spacing: 1) {
@@ -649,36 +639,24 @@ struct RepoListRow: View {
             VStack(alignment: .trailing, spacing: 1) {
                 Text(String(format: "%.0f%%", cow.health))
                     .font(.caption.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(tierColor)
+                    .foregroundStyle(tier.tierColor)
                 Text(relativeDate(cow.lastCommitDate))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
 
-            // Mini health bar
             Capsule()
                 .fill(.gray.opacity(0.15))
                 .frame(width: 36, height: 4)
                 .overlay(alignment: .leading) {
                     Capsule()
-                        .fill(tierColor)
+                        .fill(tier.tierColor)
                         .frame(width: max(1, 36 * cow.health / 100), height: 4)
                 }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(Color.primary.opacity(0.001)) // hit target
+        .background(Color.primary.opacity(0.001))
         .contentShape(Rectangle())
-    }
-
-    private func relativeDate(_ date: Date) -> String {
-        let seconds = Int(-date.timeIntervalSinceNow)
-        if seconds < 60 { return "\(seconds)s ago" }
-        let minutes = seconds / 60
-        if minutes < 60 { return "\(minutes)m ago" }
-        let hours = minutes / 60
-        if hours < 24 { return "\(hours)h ago" }
-        let days = hours / 24
-        return "\(days)d ago"
     }
 }

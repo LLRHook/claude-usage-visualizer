@@ -198,10 +198,7 @@ struct UsageGaugeView: View {
     @State private var fillAmount: Double = 0
 
     private var gaugeColor: Color {
-        if value < 40 { return .green }
-        if value < 60 { return .yellow }
-        if value < 80 { return .orange }
-        return .red
+        HealthTier.utilizationColor(for: value)
     }
 
     var body: some View {
@@ -275,17 +272,16 @@ struct ModelBreakdownRow: View {
     let opus: UsageBucket?
     let sonnet: UsageBucket?
 
+    @ViewBuilder
     var body: some View {
         let opusPct = opus?.utilization ?? 0
         let sonnetPct = sonnet?.utilization ?? 0
-        guard opusPct > 0 || sonnetPct > 0 else { return AnyView(EmptyView()) }
-
-        return AnyView(
+        if opusPct > 0 || sonnetPct > 0 {
             HStack(spacing: 12) {
                 modelBar(label: "Opus", pct: opusPct, color: .indigo)
                 modelBar(label: "Sonnet", pct: sonnetPct, color: .teal)
             }
-        )
+        }
     }
 
     private func modelBar(label: String, pct: Double, color: Color) -> some View {
