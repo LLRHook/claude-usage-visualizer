@@ -7,6 +7,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
     private var cancellables: Set<AnyCancellable> = []
+    private var indicatorDot: NSView?
 
     let usageService = UsageService()
     let historyService = UsageHistoryService()
@@ -19,8 +20,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         updateIcon()
 
         if let button = statusItem.button {
-            button.action = #selector(togglePopover)
+            button.action = #selector(statusItemClicked)
             button.target = self
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
 
         // Create popover
@@ -58,12 +60,44 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 pct5h: usage.fiveHour?.fraction ?? 0,
                 pct7d: usage.sevenDay?.fraction ?? 0
             )
+            updateIndicatorDot(on: button, utilization: usage.fiveHour?.utilization ?? 0)
         } else {
             button.image = MenuBarIconRenderer.renderUnauthenticatedIcon()
+            indicatorDot?.removeFromSuperview()
+            indicatorDot = nil
         }
     }
 
-    @objc private func togglePopover() {
+    private func updateIndicatorDot(on button: NSStatusBarButton, utilization: Double) {
+        if indicatorDot == nil {
+            let dot = NSView(frame: NSRect(x: 16, y: 1, width: 5, height: 5))
+            dot.wantsLayer = true
+            dot.layer?.cornerRadius = 2.5
+            button.addSubview(dot)
+            indicatorDot = dot
+        }
+        indicatorDot?.layer?.backgroundColor = dotColor(for: utilization).cgColor
+    }
+
+    private func dotColor(for utilization: Double) -> NSColor {
+        if utilization < 40 { return .systemGreen }
+        if utilization < 60 { return .systemYellow }
+        if utilization < 80 { return .systemOrange }
+        return .systemRed
+    }
+
+    // MARK: - Click Handling
+
+    @objc private func statusItemClicked() {
+        guard let event = NSApp.currentEvent else { return }
+        if event.type == .rightMouseUp {
+            showContextMenu()
+        } else {
+            togglePopover()
+        }
+    }
+
+    private func togglePopover() {
         guard let button = statusItem.button else { return }
         if popover.isShown {
             popover.performClose(nil)
@@ -71,5 +105,53 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
         }
+    }
+
+    // MARK: - Context Menu
+
+    private func showContextMenu() {
+        guard let button = statusItem.button else { return }
+        let menu = NSMenu()
+
+        if usageService.isAuthenticated {
+            if let usage = usageService.currentUsage {
+                let pct5h = String(format: "5h: %.0f%%", usage.fiveHour?.utilization ?? 0)
+                let pct7d = String(format: "7d: %.0f%%", usage.sevenDay?.utilization ?? 0)
+                let statusItem = NSMenuItem(title: "\(pct5h)  \(pct7d)", action: nil, keyEquivalent: "")
+                statusItem.isEnabled = false
+                menu.addItem(statusItem)
+                menu.addItem(NSMenuItem.separator())
+            }
+
+            let refreshItem = NSMenuItem(title: "Refresh Usage", action: #selector(refreshUsage), keyEquivalent: "")
+            refreshItem.target = self
+            menu.addItem(refreshItem)
+
+            let scanItem = NSMenuItem(title: "Scan Repos", action: #selector(scanRepos), keyEquivalent: "")
+            scanItem.target = self
+            menu.addItem(scanItem)
+        }
+
+        menu.addItem(NSMenuItem.separator())
+
+        let quitItem = NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "")
+        quitItem.target = self
+        menu.addItem(quitItem)
+
+        statusItem.menu = menu
+        button.performClick(nil)
+        statusItem.menu = nil
+    }
+
+    @objc private func refreshUsage() {
+        Task { await usageService.fetchUsage() }
+    }
+
+    @objc private func scanRepos() {
+        Task { await farmService.scanRepos() }
+    }
+
+    @objc private func quitApp() {
+        NSApplication.shared.terminate(nil)
     }
 }

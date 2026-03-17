@@ -61,6 +61,11 @@ struct PopoverView: View {
                 )
             }
 
+            ModelBreakdownRow(
+                opus: usage.sevenDayOpus,
+                sonnet: usage.sevenDaySonnet
+            )
+
             if let extra = usage.extraUsage, extra.isEnabled {
                 ExtraUsageRow(extra: extra)
             }
@@ -190,6 +195,7 @@ struct UsageGaugeView: View {
     let value: Double
     let label: String
     let resetDate: Date?
+    @State private var fillAmount: Double = 0
 
     private var gaugeColor: Color {
         if value < 40 { return .green }
@@ -207,9 +213,9 @@ struct UsageGaugeView: View {
                     .stroke(.gray.opacity(0.15), style: StrokeStyle(lineWidth: 7, lineCap: .round))
                     .rotationEffect(.degrees(135))
 
-                // Value fill
+                // Animated value fill
                 Circle()
-                    .trim(from: 0, to: 0.75 * min(max(value, 0), 100) / 100)
+                    .trim(from: 0, to: 0.75 * min(max(fillAmount, 0), 100) / 100)
                     .stroke(gaugeColor, style: StrokeStyle(lineWidth: 7, lineCap: .round))
                     .rotationEffect(.degrees(135))
 
@@ -225,6 +231,16 @@ struct UsageGaugeView: View {
                 .offset(y: -4)
             }
             .frame(width: 70, height: 55)
+            .onAppear {
+                withAnimation(.easeOut(duration: 0.8).delay(0.15)) {
+                    fillAmount = value
+                }
+            }
+            .onChange(of: value) { _, newValue in
+                withAnimation(.easeOut(duration: 0.5)) {
+                    fillAmount = newValue
+                }
+            }
 
             Text(label)
                 .font(.caption.weight(.medium))
@@ -250,6 +266,58 @@ struct UsageGaugeView: View {
             return "Resets \(days)d \(remHours)h"
         }
         return "Resets \(hours)h \(minutes)m"
+    }
+}
+
+// MARK: - Model Breakdown Row
+
+struct ModelBreakdownRow: View {
+    let opus: UsageBucket?
+    let sonnet: UsageBucket?
+
+    var body: some View {
+        let opusPct = opus?.utilization ?? 0
+        let sonnetPct = sonnet?.utilization ?? 0
+        guard opusPct > 0 || sonnetPct > 0 else { return AnyView(EmptyView()) }
+
+        return AnyView(
+            HStack(spacing: 12) {
+                modelBar(label: "Opus", pct: opusPct, color: .indigo)
+                modelBar(label: "Sonnet", pct: sonnetPct, color: .teal)
+            }
+        )
+    }
+
+    private func modelBar(label: String, pct: Double, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 38, alignment: .trailing)
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(.gray.opacity(0.15))
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [color, color.opacity(0.6)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: max(2, geo.size.width * min(pct / 100, 1.0)))
+                }
+            }
+            .frame(height: 5)
+            .clipShape(Capsule())
+
+            Text(String(format: "%.0f%%", pct))
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 28, alignment: .trailing)
+        }
     }
 }
 

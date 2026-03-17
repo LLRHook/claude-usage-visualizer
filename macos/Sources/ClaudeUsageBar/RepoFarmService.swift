@@ -175,24 +175,33 @@ final class RepoFarmService: ObservableObject {
                 ?? now
 
             if var cow = existingByID[key] {
-                // Update existing cow
+                // Update existing cow — recompute baseHealth from commit activity
                 let recentCommits = activities[key] ?? 0
-                let daysSinceDecay = max(0, Calendar.current.dateComponents([.day], from: cow.lastDecayDate, to: now).day ?? 0)
-                let newHealth = min(100, max(0, cow.health + Double(recentCommits) * 20 - Double(daysSinceDecay) * 5))
-                cow.health = newHealth
+                // Diminishing returns: log scale for high-activity repos
+                // 1 commit → +8, 5 → +26, 10 → +35, 50 → +55
+                let commitBoost = recentCommits > 0
+                    ? min(60, 8.0 * log2(Double(recentCommits) + 1))
+                    : 0.0
+                // baseHealth = commit-based floor + boost, anchored to now
+                // This sets the starting point; continuous decay runs from lastCommitDate
+                let newBase = min(100, max(10, 30 + commitBoost))
+                cow.baseHealth = max(cow.baseHealth, newBase) // never penalize on scan
                 cow.lastDecayDate = now
                 cow.lastCommitDate = pushedAt
                 newCows.append(cow)
             } else {
-                // New cow
-                let daysSincePush = max(0, Calendar.current.dateComponents([.day], from: pushedAt, to: now).day ?? 0)
-                let health = min(100, max(0, 100 - Double(daysSincePush) * 5))
+                // New cow — baseHealth from recent activity
+                let recentCommits = activities[key] ?? 0
+                let commitBoost = recentCommits > 0
+                    ? min(60, 8.0 * log2(Double(recentCommits) + 1))
+                    : 0.0
+                let baseHealth = min(100, max(10, 30 + commitBoost))
                 let position = randomPosition(avoiding: newCows.map(\.position))
                 let cow = RepoCow(
                     name: repo.name,
                     owner: repo.owner.login,
                     url: repo.url,
-                    health: health,
+                    baseHealth: baseHealth,
                     lastCommitDate: pushedAt,
                     lastDecayDate: now,
                     position: position

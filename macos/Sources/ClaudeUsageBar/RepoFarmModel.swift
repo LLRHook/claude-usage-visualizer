@@ -33,10 +33,68 @@ struct RepoCow: Codable, Identifiable, Hashable {
     let name: String
     let owner: String
     let url: String
-    var health: Double
+    /// Base health set at scan time (before continuous decay)
+    var baseHealth: Double
     var lastCommitDate: Date
+    /// Legacy field kept for serialization compatibility; health is now computed from lastCommitDate
     var lastDecayDate: Date
     var position: CGPoint
+
+    // Decay rate: 2% per day = ~0.0833% per hour
+    // A repo at 100 health with no commits reaches 0 in ~50 days
+    private static let decayPerHour: Double = 100.0 / (50.0 * 24.0)
+
+    /// Live health: baseHealth minus continuous decay since last commit
+    var health: Double {
+        let hoursSinceCommit = max(0, -lastCommitDate.timeIntervalSinceNow / 3600)
+        let decayed = baseHealth - hoursSinceCommit * Self.decayPerHour
+        return min(100, max(0, decayed))
+    }
+
+    // Support decoding old format where "health" was stored directly
+    enum CodingKeys: String, CodingKey {
+        case name, owner, url, baseHealth, lastCommitDate, lastDecayDate, position
+        // Legacy key
+        case health
+    }
+
+    init(name: String, owner: String, url: String, baseHealth: Double,
+         lastCommitDate: Date, lastDecayDate: Date, position: CGPoint) {
+        self.name = name
+        self.owner = owner
+        self.url = url
+        self.baseHealth = baseHealth
+        self.lastCommitDate = lastCommitDate
+        self.lastDecayDate = lastDecayDate
+        self.position = position
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        owner = try c.decode(String.self, forKey: .owner)
+        url = try c.decode(String.self, forKey: .url)
+        lastCommitDate = try c.decode(Date.self, forKey: .lastCommitDate)
+        lastDecayDate = try c.decode(Date.self, forKey: .lastDecayDate)
+        position = try c.decode(CGPoint.self, forKey: .position)
+        // Try new key first, fall back to legacy "health"
+        if let bh = try? c.decode(Double.self, forKey: .baseHealth) {
+            baseHealth = bh
+        } else {
+            baseHealth = try c.decode(Double.self, forKey: .health)
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(name, forKey: .name)
+        try c.encode(owner, forKey: .owner)
+        try c.encode(url, forKey: .url)
+        try c.encode(baseHealth, forKey: .baseHealth)
+        try c.encode(lastCommitDate, forKey: .lastCommitDate)
+        try c.encode(lastDecayDate, forKey: .lastDecayDate)
+        try c.encode(position, forKey: .position)
+    }
 
     static func == (lhs: RepoCow, rhs: RepoCow) -> Bool {
         lhs.id == rhs.id

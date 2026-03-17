@@ -402,11 +402,11 @@ struct SmileShape: Shape {
 
 #Preview("All Tiers") {
     HStack(spacing: 16) {
-        CowView(cow: RepoCow(name: "thriving-repo", owner: "test", url: "", health: 95, lastCommitDate: Date(), lastDecayDate: Date(), position: .zero), facingRight: true)
-        CowView(cow: RepoCow(name: "happy-repo", owner: "test", url: "", health: 70, lastCommitDate: Date(), lastDecayDate: Date(), position: .zero), facingRight: false)
-        CowView(cow: RepoCow(name: "meh-repo", owner: "test", url: "", health: 50, lastCommitDate: Date(), lastDecayDate: Date(), position: .zero), facingRight: true)
-        CowView(cow: RepoCow(name: "sad-repo", owner: "test", url: "", health: 30, lastCommitDate: Date(), lastDecayDate: Date(), position: .zero), facingRight: false)
-        CowView(cow: RepoCow(name: "dead-repo", owner: "test", url: "", health: 5, lastCommitDate: Date(), lastDecayDate: Date(), position: .zero), facingRight: true)
+        CowView(cow: RepoCow(name: "thriving-repo", owner: "test", url: "", baseHealth: 95, lastCommitDate: Date(), lastDecayDate: Date(), position: .zero), facingRight: true)
+        CowView(cow: RepoCow(name: "happy-repo", owner: "test", url: "", baseHealth: 70, lastCommitDate: Date(), lastDecayDate: Date(), position: .zero), facingRight: false)
+        CowView(cow: RepoCow(name: "meh-repo", owner: "test", url: "", baseHealth: 50, lastCommitDate: Date(), lastDecayDate: Date(), position: .zero), facingRight: true)
+        CowView(cow: RepoCow(name: "sad-repo", owner: "test", url: "", baseHealth: 30, lastCommitDate: Date(), lastDecayDate: Date(), position: .zero), facingRight: false)
+        CowView(cow: RepoCow(name: "dead-repo", owner: "test", url: "", baseHealth: 5, lastCommitDate: Date(), lastDecayDate: Date(), position: .zero), facingRight: true)
     }
     .padding()
     .background(Color(red: 0.35, green: 0.65, blue: 0.25))

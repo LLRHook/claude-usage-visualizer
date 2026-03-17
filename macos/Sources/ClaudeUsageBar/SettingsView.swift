@@ -51,6 +51,10 @@ struct GeneralSettingsView: View {
                 }
             }
 
+            Section("Alerts") {
+                Toggle("Notify at 80% usage", isOn: $usageService.alertsEnabled)
+            }
+
             Section("System") {
                 Toggle("Launch at login", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, newValue in

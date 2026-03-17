@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import CryptoKit
+@preconcurrency import UserNotifications
 
 @MainActor
 final class UsageService: ObservableObject {
@@ -30,10 +31,15 @@ final class UsageService: ObservableObject {
     @Published var currentUsage: UsageResponse?
     @Published var lastUpdated: Date?
     @Published var pollingInterval: TimeInterval = 1800 // 30 min default
+    @Published var alertsEnabled: Bool = UserDefaults.standard.bool(forKey: "alertsEnabled") {
+        didSet { UserDefaults.standard.set(alertsEnabled, forKey: "alertsEnabled") }
+    }
 
     // MARK: - Private State
 
     private var codeVerifier: String?
+    /// Tracks the reset date we last notified for, to avoid repeat alerts in the same window
+    private var lastNotifiedResetDate: Date?
     private var oauthState: String?
     private var credentials: StoredCredentials?
     private var isRefreshing = false
@@ -253,6 +259,9 @@ final class UsageService: ObservableObject {
                     )
                 }
 
+                // Check threshold alert
+                checkUsageAlert()
+
             case 401:
                 if await refreshTokenIfNeeded() {
                     // Retry once with new token
@@ -308,6 +317,43 @@ final class UsageService: ObservableObject {
                 guard !Task.isCancelled else { break }
                 await self.fetchUsage()
             }
+        }
+    }
+
+    // MARK: - Usage Alerts
+
+    private func checkUsageAlert() {
+        guard alertsEnabled,
+              let usage = currentUsage,
+              let fiveHour = usage.fiveHour,
+              let utilization = fiveHour.utilization,
+              utilization >= 80 else { return }
+
+        // Only notify once per reset window
+        let resetDate = fiveHour.resetDate
+        if let resetDate, let lastNotified = lastNotifiedResetDate, lastNotified == resetDate {
+            return // Already notified for this window
+        }
+
+        lastNotifiedResetDate = resetDate
+        sendUsageNotification(utilization: utilization)
+    }
+
+    private func sendUsageNotification(utilization: Double) {
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            content.title = "Claude Usage Alert"
+            content.body = String(format: "5-hour usage at %.0f%%. Consider slowing down to avoid rate limiting.", utilization)
+            content.sound = .default
+
+            let request = UNNotificationRequest(
+                identifier: "usage-alert-\(Date().timeIntervalSince1970)",
+                content: content,
+                trigger: nil // deliver immediately
+            )
+            center.add(request)
         }
     }
 
