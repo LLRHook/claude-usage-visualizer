@@ -13,6 +13,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let historyService = UsageHistoryService()
     let farmService = RepoFarmService()
     let appUpdater = AppUpdater()
+    let paceCoachService = PaceCoachService()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Create status bar item
@@ -33,7 +34,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let contentView = PopoverView(
             usageService: usageService,
             historyService: historyService,
-            farmService: farmService
+            farmService: farmService,
+            paceCoachService: paceCoachService
         )
         popover.contentViewController = NSHostingController(rootView: contentView)
 
@@ -50,6 +52,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         usageService.$currentUsage
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateIcon() }
+            .store(in: &cancellables)
+
+        // Wire pace coach: recalculate whenever usage or history changes
+        Publishers.CombineLatest(usageService.$currentUsage, historyService.$dataPoints)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] usage, dataPoints in
+                guard let self else { return }
+                let utilization = usage?.fiveHour?.utilization ?? 0
+                let resetDate = usage?.fiveHour?.resetDate
+                self.paceCoachService.recalculate(
+                    dataPoints: dataPoints,
+                    currentUtilization: utilization,
+                    resetDate: resetDate
+                )
+            }
             .store(in: &cancellables)
     }
 
