@@ -26,6 +26,50 @@ struct CowAppearance {
     let tailLength: CGFloat
 }
 
+// MARK: - Cow Evolution
+
+enum CowEvolutionStage: String, Codable, CaseIterable {
+    case calf, heifer, cow, bull
+
+    init(totalYearlyCommits: Int) {
+        switch totalYearlyCommits {
+        case ..<10:    self = .calf
+        case 10..<50:  self = .heifer
+        case 50..<200: self = .cow
+        default:       self = .bull
+        }
+    }
+
+    var scaleFactor: CGFloat {
+        switch self {
+        case .calf:   0.7
+        case .heifer: 0.85
+        case .cow:    1.0
+        case .bull:   1.15
+        }
+    }
+
+    var headScaleFactor: CGFloat {
+        switch self {
+        case .calf:   1.25
+        case .heifer: 1.05
+        case .cow:    1.0
+        case .bull:   1.0
+        }
+    }
+
+    var hasHorns: Bool { self == .bull }
+
+    var displayName: String {
+        switch self {
+        case .calf:   "Calf"
+        case .heifer: "Heifer"
+        case .cow:    "Cow"
+        case .bull:   "Bull"
+        }
+    }
+}
+
 // MARK: - Persisted Types
 
 struct RepoCow: Codable, Identifiable, Hashable {
@@ -39,6 +83,16 @@ struct RepoCow: Codable, Identifiable, Hashable {
     /// Legacy field kept for serialization compatibility; health is now computed from lastCommitDate
     var lastDecayDate: Date
     var position: CGPoint
+    var totalYearlyCommits: Int
+    var consecutiveHealthyScans: Int
+
+    var evolutionStage: CowEvolutionStage {
+        CowEvolutionStage(totalYearlyCommits: totalYearlyCommits)
+    }
+
+    var hasGoldenBell: Bool {
+        consecutiveHealthyScans >= 4
+    }
 
     // Decay rate: 2% per day = ~0.0833% per hour
     // A repo at 100 health with no commits reaches 0 in ~50 days
@@ -54,12 +108,14 @@ struct RepoCow: Codable, Identifiable, Hashable {
     // Support decoding old format where "health" was stored directly
     enum CodingKeys: String, CodingKey {
         case name, owner, url, baseHealth, lastCommitDate, lastDecayDate, position
+        case totalYearlyCommits, consecutiveHealthyScans
         // Legacy key
         case health
     }
 
     init(name: String, owner: String, url: String, baseHealth: Double,
-         lastCommitDate: Date, lastDecayDate: Date, position: CGPoint) {
+         lastCommitDate: Date, lastDecayDate: Date, position: CGPoint,
+         totalYearlyCommits: Int = 0, consecutiveHealthyScans: Int = 0) {
         self.name = name
         self.owner = owner
         self.url = url
@@ -67,6 +123,8 @@ struct RepoCow: Codable, Identifiable, Hashable {
         self.lastCommitDate = lastCommitDate
         self.lastDecayDate = lastDecayDate
         self.position = position
+        self.totalYearlyCommits = totalYearlyCommits
+        self.consecutiveHealthyScans = consecutiveHealthyScans
     }
 
     init(from decoder: Decoder) throws {
@@ -83,6 +141,8 @@ struct RepoCow: Codable, Identifiable, Hashable {
         } else {
             baseHealth = try c.decode(Double.self, forKey: .health)
         }
+        totalYearlyCommits = try c.decodeIfPresent(Int.self, forKey: .totalYearlyCommits) ?? 0
+        consecutiveHealthyScans = try c.decodeIfPresent(Int.self, forKey: .consecutiveHealthyScans) ?? 0
     }
 
     func encode(to encoder: Encoder) throws {
@@ -94,6 +154,8 @@ struct RepoCow: Codable, Identifiable, Hashable {
         try c.encode(lastCommitDate, forKey: .lastCommitDate)
         try c.encode(lastDecayDate, forKey: .lastDecayDate)
         try c.encode(position, forKey: .position)
+        try c.encode(totalYearlyCommits, forKey: .totalYearlyCommits)
+        try c.encode(consecutiveHealthyScans, forKey: .consecutiveHealthyScans)
     }
 
     static func == (lhs: RepoCow, rhs: RepoCow) -> Bool {

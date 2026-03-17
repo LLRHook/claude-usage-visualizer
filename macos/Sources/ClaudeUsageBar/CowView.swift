@@ -4,14 +4,16 @@ struct CowView: View {
     let cow: RepoCow
     let facingRight: Bool
     var isGrazing: Bool = false
+    var isSleeping: Bool = false
     var animationDate: Date = Date()
     @State private var isHovered = false
 
     private var tier: HealthTier { HealthTier(health: cow.health) }
     private var appearance: CowAppearance { cow.appearance }
+    private var stage: CowEvolutionStage { cow.evolutionStage }
 
     private var legPhase: Double {
-        guard !isGrazing else { return 0 }
+        guard !isGrazing, !isSleeping else { return 0 }
         var h: UInt64 = 5381
         for byte in cow.id.utf8 {
             h = ((h << 5) &+ h) &+ UInt64(byte)
@@ -29,17 +31,18 @@ struct CowView: View {
                     // Ground shadow
                     Ellipse()
                         .fill(.black.opacity(0.12))
-                        .frame(width: 28, height: 6)
+                        .frame(width: 28 * stage.scaleFactor, height: 6 * stage.scaleFactor)
                         .blur(radius: 1)
                         .offset(y: 14)
 
                     cowSprite
+                        .scaleEffect(stage.scaleFactor)
                         .scaleEffect(x: facingRight ? 1 : -1, y: 1)
                 }
             }
             healthBar
         }
-        .frame(width: 44, height: 44)
+        .frame(width: 44 * stage.scaleFactor, height: 44 * stage.scaleFactor)
         .overlay(alignment: .top) {
             if isHovered {
                 nameLabel
@@ -114,12 +117,19 @@ struct CowView: View {
                 .frame(width: 13, height: 13)
                 .shadow(color: .black.opacity(0.1), radius: 0.5, y: 0.5)
                 .overlay { faceView }
+                .scaleEffect(stage.headScaleFactor)
                 .offset(x: 18, y: isGrazing ? -2 : -5)
 
-            // Grazing tuft
-            if isGrazing {
+            // Grazing tuft (suppressed when sleeping)
+            if isGrazing && !isSleeping {
                 grazingTuft
                     .offset(x: 24, y: 2)
+            }
+
+            // Sleep indicator
+            if isSleeping {
+                sleepIndicator
+                    .offset(x: 22, y: isGrazing ? -18 : -22)
             }
 
             // Ears
@@ -131,6 +141,29 @@ struct CowView: View {
                 .fill(Color.pink.opacity(0.5))
                 .frame(width: 4, height: 5)
                 .offset(x: 22, y: isGrazing ? -10 : -13)
+
+            // Horns (bull only)
+            if stage.hasHorns {
+                Capsule()
+                    .fill(Color(red: 0.95, green: 0.90, blue: 0.75))
+                    .frame(width: 3, height: 7)
+                    .rotationEffect(.degrees(-25))
+                    .offset(x: 15, y: isGrazing ? -15 : -18)
+                Capsule()
+                    .fill(Color(red: 0.95, green: 0.90, blue: 0.75))
+                    .frame(width: 3, height: 7)
+                    .rotationEffect(.degrees(25))
+                    .offset(x: 24, y: isGrazing ? -14 : -17)
+            }
+
+            // Golden bell (long-term healthy repos)
+            if cow.hasGoldenBell {
+                Circle()
+                    .fill(Color.yellow)
+                    .frame(width: 4, height: 4)
+                    .shadow(color: .yellow.opacity(0.5), radius: 1)
+                    .offset(x: 18, y: isGrazing ? 4 : 1)
+            }
         }
         .frame(width: 44, height: 34)
     }
@@ -148,6 +181,17 @@ struct CowView: View {
                 .frame(width: 3, height: 4)
                 .offset(x: 2, y: -1)
         }
+    }
+
+    // MARK: - Sleep Indicator
+
+    private var sleepIndicator: some View {
+        let phase = animationDate.timeIntervalSinceReferenceDate
+        let offset = sin(phase * 1.5) * 2
+        return Text("z")
+            .font(.system(size: 7, weight: .bold, design: .rounded))
+            .foregroundStyle(.white.opacity(0.7))
+            .offset(y: CGFloat(offset))
     }
 
     // MARK: - Face
@@ -168,25 +212,30 @@ struct CowView: View {
 
     @ViewBuilder
     private var eyeView: some View {
-        switch tier {
-        case .thriving:
-            ZStack {
+        if isSleeping {
+            // Closed eyes — short horizontal line
+            Rectangle().fill(.black).frame(width: 3, height: 0.8)
+        } else {
+            switch tier {
+            case .thriving:
+                ZStack {
+                    Circle().fill(.black).frame(width: 2.5, height: 2.5)
+                    Circle().fill(.white).frame(width: 1, height: 1).offset(x: 0.5, y: -0.5)
+                }
+            case .happy:
                 Circle().fill(.black).frame(width: 2.5, height: 2.5)
-                Circle().fill(.white).frame(width: 1, height: 1).offset(x: 0.5, y: -0.5)
-            }
-        case .happy:
-            Circle().fill(.black).frame(width: 2.5, height: 2.5)
-        case .meh:
-            Circle().fill(.black).frame(width: 2.5, height: 2.5)
-                .clipShape(Rectangle().offset(y: 0.6))
-        case .sad:
-            VStack(spacing: 0) {
-                Rectangle().fill(.black).frame(width: 3, height: 0.6)
-                    .rotationEffect(.degrees(-10))
+            case .meh:
                 Circle().fill(.black).frame(width: 2.5, height: 2.5)
+                    .clipShape(Rectangle().offset(y: 0.6))
+            case .sad:
+                VStack(spacing: 0) {
+                    Rectangle().fill(.black).frame(width: 3, height: 0.6)
+                        .rotationEffect(.degrees(-10))
+                    Circle().fill(.black).frame(width: 2.5, height: 2.5)
+                }
+            case .dead:
+                EmptyView()
             }
-        case .dead:
-            EmptyView()
         }
     }
 
@@ -295,6 +344,7 @@ struct CowDetailView: View {
     let cow: RepoCow
 
     private var tier: HealthTier { HealthTier(health: cow.health) }
+    private var stage: CowEvolutionStage { cow.evolutionStage }
 
     var body: some View {
         VStack(spacing: 10) {
@@ -317,6 +367,14 @@ struct CowDetailView: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(Capsule().fill(tier.tierColor.opacity(0.15)))
+
+            HStack(spacing: 4) {
+                Text(stage.displayName)
+                    .font(.caption.weight(.medium))
+                Text("(\(cow.totalYearlyCommits) commits/yr)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             HStack {
                 Text("Health:")
@@ -385,6 +443,17 @@ struct SmileShape: Shape {
         CowView(cow: RepoCow(name: "meh-repo", owner: "test", url: "", baseHealth: 50, lastCommitDate: Date(), lastDecayDate: Date(), position: .zero), facingRight: true)
         CowView(cow: RepoCow(name: "sad-repo", owner: "test", url: "", baseHealth: 30, lastCommitDate: Date(), lastDecayDate: Date(), position: .zero), facingRight: false)
         CowView(cow: RepoCow(name: "dead-repo", owner: "test", url: "", baseHealth: 5, lastCommitDate: Date(), lastDecayDate: Date(), position: .zero), facingRight: true)
+    }
+    .padding()
+    .background(Color(red: 0.35, green: 0.65, blue: 0.25))
+}
+
+#Preview("Evolution Stages") {
+    HStack(spacing: 20) {
+        CowView(cow: RepoCow(name: "calf-repo", owner: "test", url: "", baseHealth: 80, lastCommitDate: Date(), lastDecayDate: Date(), position: .zero, totalYearlyCommits: 5), facingRight: true)
+        CowView(cow: RepoCow(name: "heifer-repo", owner: "test", url: "", baseHealth: 80, lastCommitDate: Date(), lastDecayDate: Date(), position: .zero, totalYearlyCommits: 30), facingRight: true)
+        CowView(cow: RepoCow(name: "cow-repo", owner: "test", url: "", baseHealth: 80, lastCommitDate: Date(), lastDecayDate: Date(), position: .zero, totalYearlyCommits: 100), facingRight: true)
+        CowView(cow: RepoCow(name: "bull-repo", owner: "test", url: "", baseHealth: 80, lastCommitDate: Date(), lastDecayDate: Date(), position: .zero, totalYearlyCommits: 500), facingRight: true)
     }
     .padding()
     .background(Color(red: 0.35, green: 0.65, blue: 0.25))

@@ -112,25 +112,23 @@ final class RepoFarmService: ObservableObject {
         }
     }
 
-    private func fetchCommitActivities(repos: [GHRepoEntry]) async -> [String: Int] {
-        var results: [String: Int] = [:]
+    private func fetchCommitActivities(repos: [GHRepoEntry]) async -> [String: (recent: Int, total: Int)] {
+        var results: [String: (recent: Int, total: Int)] = [:]
 
-        await withTaskGroup(of: (String, Int?).self) { group in
-            var launched = 0
+        await withTaskGroup(of: (String, (recent: Int, total: Int)?).self) { group in
             var repoIter = repos.makeIterator()
 
             // Seed 5 concurrent tasks
             for _ in 0..<5 {
                 guard let repo = repoIter.next() else { break }
-                launched += 1
                 group.addTask { [weak self] in
                     await (repo.owner.login + "/" + repo.name,
                            self?.fetchRecentCommits(owner: repo.owner.login, name: repo.name))
                 }
             }
 
-            for await (key, count) in group {
-                if let count { results[key] = count }
+            for await (key, activity) in group {
+                if let activity { results[key] = activity }
 
                 if let repo = repoIter.next() {
                     group.addTask { [weak self] in
@@ -144,22 +142,23 @@ final class RepoFarmService: ObservableObject {
         return results
     }
 
-    private func fetchRecentCommits(owner: String, name: String) async -> Int? {
+    private func fetchRecentCommits(owner: String, name: String) async -> (recent: Int, total: Int)? {
         do {
             let data = try await runGH([
                 "api", "/repos/\(owner)/\(name)/stats/commit_activity"
             ])
             let weeks = try JSONDecoder().decode([GHCommitActivityWeek].self, from: data)
-            // Sum last 4 weeks
+            // Sum last 4 weeks for recent, all weeks for total
             let recent = weeks.suffix(4).reduce(0) { $0 + $1.total }
-            return recent
+            let total = weeks.reduce(0) { $0 + $1.total }
+            return (recent: recent, total: total)
         } catch {
             // HTTP 202 (stats computing) or other errors — skip
             return nil
         }
     }
 
-    private func reconcile(repos: [GHRepoEntry], activities: [String: Int]) {
+    private func reconcile(repos: [GHRepoEntry], activities: [String: (recent: Int, total: Int)]) {
         let existingByID = Dictionary(uniqueKeysWithValues: state.cows.map { ($0.id, $0) })
         let iso8601 = ISO8601DateFormatter()
         iso8601.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -173,17 +172,27 @@ final class RepoFarmService: ObservableObject {
             let pushedAt = iso8601.date(from: repo.pushedAt)
                 ?? iso8601NoFrac.date(from: repo.pushedAt)
                 ?? now
+            let activity = activities[key]
+            let recentCommits = activity?.recent ?? 0
+            let totalCommits = activity?.total ?? 0
 
             if var cow = existingByID[key] {
                 // Update existing cow — recompute baseHealth from commit activity
-                let newBase = baseHealth(for: activities[key] ?? 0)
+                let newBase = baseHealth(for: recentCommits)
                 cow.baseHealth = max(cow.baseHealth, newBase) // never penalize on scan
                 cow.lastDecayDate = now
                 cow.lastCommitDate = pushedAt
+                cow.totalYearlyCommits = totalCommits
+                // Track consecutive healthy scans for golden bell
+                if cow.health > 80 {
+                    cow.consecutiveHealthyScans += 1
+                } else {
+                    cow.consecutiveHealthyScans = 0
+                }
                 newCows.append(cow)
             } else {
                 // New cow — baseHealth from recent activity
-                let baseHealth = baseHealth(for: activities[key] ?? 0)
+                let baseHealth = baseHealth(for: recentCommits)
                 let position = randomPosition(avoiding: newCows.map(\.position))
                 let cow = RepoCow(
                     name: repo.name,
@@ -192,7 +201,9 @@ final class RepoFarmService: ObservableObject {
                     baseHealth: baseHealth,
                     lastCommitDate: pushedAt,
                     lastDecayDate: now,
-                    position: position
+                    position: position,
+                    totalYearlyCommits: totalCommits,
+                    consecutiveHealthyScans: 0
                 )
                 newCows.append(cow)
             }

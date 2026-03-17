@@ -3,13 +3,14 @@ import SwiftUI
 struct FarmSceneView: View {
     @ObservedObject var farmService: RepoFarmService
     @Binding var isExpanded: Bool
+    var weather: FarmWeather = FarmWeather.compute(utilization: 0)
     @State private var cowStates: [String: CowAnimState] = [:]
     @State private var selectedCow: RepoCow?
     @State private var filterTier: HealthTier?
     @State private var showListView = false
     @State private var sortOrder: RepoSortOrder = .health
+    @State private var particles: [(x: CGFloat, y: CGFloat, speed: CGFloat, size: CGFloat)] = []
 
-    private let grassColor = Color(red: 0.35, green: 0.65, blue: 0.25)
     private let fenceColor = Color(red: 0.55, green: 0.35, blue: 0.15)
 
     // The full farm is always this size — viewport clips it
@@ -32,6 +33,8 @@ struct FarmSceneView: View {
             return base.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         case .lastCommit:
             return base.sorted { $0.lastCommitDate > $1.lastCommitDate }
+        case .totalCommits:
+            return base.sorted { $0.totalYearlyCommits > $1.totalYearlyCommits }
         }
     }
 
@@ -173,7 +176,7 @@ struct FarmSceneView: View {
         .frame(width: viewportWidth, height: viewportHeight)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .animation(.spring(duration: 0.35), value: isExpanded)
-        .onAppear { initAnimStates() }
+        .onAppear { initAnimStates(); initParticles() }
         .onDisappear { persistPositions() }
         .popover(item: $selectedCow) { cow in
             CowDetailView(cow: cow)
@@ -185,6 +188,7 @@ struct FarmSceneView: View {
             Canvas { context, size in
                 drawBackground(context: context, size: size)
                 drawFence(context: context, size: size)
+                drawParticles(context: context, size: size)
             }
             .frame(width: farmSize.width, height: farmSize.height)
             .overlay {
@@ -197,6 +201,7 @@ struct FarmSceneView: View {
                         cow: cow,
                         facingRight: cos(angle) >= 0,
                         isGrazing: state?.isPaused ?? false,
+                        isSleeping: weather.timeOfDay.cowsShouldSleep,
                         animationDate: timeline.date
                     )
                     .position(x: pos.x, y: pos.y)
@@ -213,18 +218,67 @@ struct FarmSceneView: View {
     // MARK: - Background Drawing
 
     private func drawBackground(context: GraphicsContext, size: CGSize) {
+        let skyHeight = size.height * 0.40
+        var rng = SeededRNG(seed: 42)
+
+        // Sky gradient (top 40%)
+        let skySteps = 20
+        for i in 0..<skySteps {
+            let t = CGFloat(i) / CGFloat(skySteps)
+            let stripH = skyHeight / CGFloat(skySteps)
+            let rect = CGRect(x: 0, y: t * skyHeight, width: size.width, height: stripH + 1)
+            context.fill(Path(rect), with: .color(skyBlend(Double(t))))
+        }
+
+        // Sun or moon
+        drawCelestial(context: context, size: size, skyHeight: skyHeight)
+
+        // Stars (night only)
+        if weather.timeOfDay.showStars {
+            var starRng = SeededRNG(seed: 77)
+            for _ in 0..<40 {
+                let sx = CGFloat.random(in: 5...size.width - 5, using: &starRng)
+                let sy = CGFloat.random(in: 5...skyHeight - 5, using: &starRng)
+                let starSize = CGFloat.random(in: 1.0...2.0, using: &starRng)
+                let brightness = Double.random(in: 0.5...1.0, using: &starRng)
+                context.fill(
+                    Path(ellipseIn: CGRect(x: sx, y: sy, width: starSize, height: starSize)),
+                    with: .color(Color.white.opacity(brightness))
+                )
+            }
+        }
+
+        // Clouds
+        let cloudOp = weather.usageWeather.cloudOpacity
+        if cloudOp > 0 {
+            drawClouds(context: context, size: size, skyHeight: skyHeight, opacity: cloudOp)
+        }
+
+        // Grass fill
         context.fill(
-            Path(CGRect(origin: .zero, size: size)),
-            with: .color(grassColor)
+            Path(CGRect(x: 0, y: skyHeight, width: size.width, height: size.height - skyHeight)),
+            with: .color(weather.adjustedGrassColor)
         )
 
-        let tuftsCount = Int(size.width * size.height / 800)
-        var rng = SeededRNG(seed: 42)
-        let darkGrass = Color(red: 0.28, green: 0.55, blue: 0.18)
-        let lightGrass = Color(red: 0.42, green: 0.72, blue: 0.30)
+        // Grass tufts
+        let grassBrightness = weather.usageWeather.grassBrightness * weather.timeOfDay.brightness
+        let shift = weather.season.grassHueShift
+        let darkGrass = Color(
+            red: max(0, (0.28 + shift.r) * grassBrightness),
+            green: max(0, (0.55 + shift.g) * grassBrightness),
+            blue: max(0, (0.18 + shift.b) * grassBrightness)
+        )
+        let lightGrass = Color(
+            red: min(1, (0.42 + shift.r) * grassBrightness),
+            green: min(1, (0.72 + shift.g) * grassBrightness),
+            blue: min(1, (0.30 + shift.b) * grassBrightness)
+        )
+
+        let grassArea = size.width * (size.height - skyHeight)
+        let tuftsCount = Int(grassArea / 800)
         for _ in 0..<tuftsCount {
             let x = CGFloat.random(in: 0...size.width, using: &rng)
-            let y = CGFloat.random(in: 0...size.height, using: &rng)
+            let y = CGFloat.random(in: skyHeight...size.height, using: &rng)
             let dotSize = CGFloat.random(in: 2...4, using: &rng)
             let color = Bool.random(using: &rng) ? darkGrass : lightGrass
             context.fill(
@@ -233,29 +287,169 @@ struct FarmSceneView: View {
             )
         }
 
-        // Flowers
-        let flowerColors = [Color.white, Color.yellow, Color.purple]
-        for _ in 0..<15 {
-            let x = CGFloat.random(in: 20...size.width - 20, using: &rng)
-            let y = CGFloat.random(in: 20...size.height - 20, using: &rng)
-            let flowerSize = CGFloat.random(in: 1.5...2.5, using: &rng)
-            let colorIdx = Int.random(in: 0..<3, using: &rng)
-            context.fill(
-                Path(ellipseIn: CGRect(x: x, y: y, width: flowerSize, height: flowerSize)),
-                with: .color(flowerColors[colorIdx].opacity(0.7))
-            )
+        // Flowers / leaves depending on season
+        if weather.season == .autumn {
+            let leafColors = weather.season.leafColors
+            for _ in 0..<12 {
+                let x = CGFloat.random(in: 20...size.width - 20, using: &rng)
+                let y = CGFloat.random(in: skyHeight + 10...size.height - 20, using: &rng)
+                let leafSize = CGFloat.random(in: 2.0...3.5, using: &rng)
+                let ci = Int.random(in: 0..<leafColors.count, using: &rng)
+                let lc = leafColors[ci]
+                context.fill(
+                    Path(ellipseIn: CGRect(x: x, y: y, width: leafSize, height: leafSize * 0.7)),
+                    with: .color(Color(red: lc.r, green: lc.g, blue: lc.b).opacity(0.7))
+                )
+            }
+        } else {
+            let flowerColors = [Color.white, Color.yellow, Color.purple]
+            let flowerCount = weather.season.flowerCount
+            for _ in 0..<flowerCount {
+                let x = CGFloat.random(in: 20...size.width - 20, using: &rng)
+                let y = CGFloat.random(in: skyHeight + 10...size.height - 20, using: &rng)
+                let flowerSize = CGFloat.random(in: 1.5...2.5, using: &rng)
+                let colorIdx = Int.random(in: 0..<3, using: &rng)
+                context.fill(
+                    Path(ellipseIn: CGRect(x: x, y: y, width: flowerSize, height: flowerSize)),
+                    with: .color(flowerColors[colorIdx].opacity(0.7))
+                )
+            }
         }
 
         // Dirt patches
         for _ in 0..<5 {
             let x = CGFloat.random(in: 30...size.width - 30, using: &rng)
-            let y = CGFloat.random(in: 30...size.height - 30, using: &rng)
+            let y = CGFloat.random(in: skyHeight + 20...size.height - 30, using: &rng)
             let w = CGFloat.random(in: 8...15, using: &rng)
             let h = w * CGFloat.random(in: 0.4...0.7, using: &rng)
             context.fill(
                 Path(ellipseIn: CGRect(x: x, y: y, width: w, height: h)),
                 with: .color(Color(red: 0.45, green: 0.35, blue: 0.20).opacity(0.15))
             )
+        }
+    }
+
+    // MARK: - Sky Helpers
+
+    private func skyBlend(_ t: Double) -> Color {
+        let top = weather.timeOfDay.skyTopColor
+        let bot = weather.timeOfDay.skyBottomColor
+        let dim = weather.usageWeather.grassBrightness
+        let r = (top.r + (bot.r - top.r) * t) * dim
+        let g = (top.g + (bot.g - top.g) * t) * dim
+        let b = (top.b + (bot.b - top.b) * t) * dim
+        return Color(red: min(1, max(0, r)), green: min(1, max(0, g)), blue: min(1, max(0, b)))
+    }
+
+    private func drawCelestial(context: GraphicsContext, size: CGSize, skyHeight: CGFloat) {
+        let cx = size.width * 0.80
+        let cy = skyHeight * 0.35
+        switch weather.timeOfDay {
+        case .night:
+            // Moon
+            context.fill(
+                Path(ellipseIn: CGRect(x: cx - 10, y: cy - 10, width: 20, height: 20)),
+                with: .color(Color(red: 0.9, green: 0.9, blue: 0.8).opacity(0.9))
+            )
+            // Dark crescent overlay
+            context.fill(
+                Path(ellipseIn: CGRect(x: cx - 5, y: cy - 11, width: 18, height: 18)),
+                with: .color(skyBlend(0))
+            )
+        case .morning, .midday, .afternoon:
+            // Sun
+            let sunColor = weather.timeOfDay == .morning
+                ? Color(red: 1.0, green: 0.85, blue: 0.5)
+                : Color(red: 1.0, green: 0.95, blue: 0.6)
+            context.fill(
+                Path(ellipseIn: CGRect(x: cx - 12, y: cy - 12, width: 24, height: 24)),
+                with: .color(sunColor.opacity(0.9))
+            )
+            // Glow
+            context.fill(
+                Path(ellipseIn: CGRect(x: cx - 18, y: cy - 18, width: 36, height: 36)),
+                with: .color(sunColor.opacity(0.15))
+            )
+        case .evening:
+            // Setting sun — lower and redder
+            let sunY = skyHeight * 0.65
+            context.fill(
+                Path(ellipseIn: CGRect(x: cx - 14, y: sunY - 14, width: 28, height: 28)),
+                with: .color(Color(red: 1.0, green: 0.55, blue: 0.25).opacity(0.85))
+            )
+            context.fill(
+                Path(ellipseIn: CGRect(x: cx - 22, y: sunY - 22, width: 44, height: 44)),
+                with: .color(Color(red: 1.0, green: 0.55, blue: 0.25).opacity(0.1))
+            )
+        }
+    }
+
+    private func drawClouds(context: GraphicsContext, size: CGSize, skyHeight: CGFloat, opacity: Double) {
+        var cloudRng = SeededRNG(seed: 123)
+        let cloudCount = Int.random(in: 2...4, using: &cloudRng)
+        let cloudColor = Color.white.opacity(opacity * 0.7)
+
+        for _ in 0..<cloudCount {
+            let cx = CGFloat.random(in: 30...size.width - 30, using: &cloudRng)
+            let cy = CGFloat.random(in: 15...skyHeight * 0.7, using: &cloudRng)
+            // Each cloud is 3-4 overlapping ellipses
+            let blobCount = Int.random(in: 3...4, using: &cloudRng)
+            for _ in 0..<blobCount {
+                let bx = cx + CGFloat.random(in: -18...18, using: &cloudRng)
+                let by = cy + CGFloat.random(in: -5...5, using: &cloudRng)
+                let bw = CGFloat.random(in: 18...30, using: &cloudRng)
+                let bh = CGFloat.random(in: 8...14, using: &cloudRng)
+                context.fill(
+                    Path(ellipseIn: CGRect(x: bx - bw / 2, y: by - bh / 2, width: bw, height: bh)),
+                    with: .color(cloudColor)
+                )
+            }
+        }
+    }
+
+    // MARK: - Particles
+
+    private func drawParticles(context: GraphicsContext, size: CGSize) {
+        switch weather.particleType {
+        case .rain:
+            for p in particles {
+                var line = Path()
+                line.move(to: CGPoint(x: p.x, y: p.y))
+                line.addLine(to: CGPoint(x: p.x - 1, y: p.y + p.size))
+                context.stroke(line, with: .color(Color(red: 0.6, green: 0.7, blue: 0.9).opacity(0.5)),
+                               lineWidth: 1)
+            }
+        case .snow:
+            for p in particles {
+                context.fill(
+                    Path(ellipseIn: CGRect(x: p.x - p.size / 2, y: p.y - p.size / 2,
+                                           width: p.size, height: p.size)),
+                    with: .color(Color.white.opacity(0.7))
+                )
+            }
+        case .none:
+            break
+        }
+    }
+
+    private func initParticles() {
+        switch weather.particleType {
+        case .rain:
+            particles = (0..<40).map { _ in
+                (x: CGFloat.random(in: 0...farmSize.width),
+                 y: CGFloat.random(in: 0...farmSize.height),
+                 speed: CGFloat.random(in: 6...10),
+                 size: CGFloat.random(in: 6...12))
+            }
+        case .snow:
+            particles = (0..<25).map { _ in
+                (x: CGFloat.random(in: 0...farmSize.width),
+                 y: CGFloat.random(in: 0...farmSize.height),
+                 speed: CGFloat.random(in: 1.0...2.5),
+                 size: CGFloat.random(in: 2...4))
+            }
+        case .none:
+            particles = []
         }
     }
 
@@ -431,6 +625,32 @@ struct FarmSceneView: View {
 
         applySeparation(&newStates)
         cowStates = newStates
+        updateParticles()
+    }
+
+    // MARK: - Particle Updates
+
+    private func updateParticles() {
+        guard !particles.isEmpty else { return }
+        let w = farmSize.width
+        let h = farmSize.height
+        let isSnow = weather.particleType == .snow
+
+        for i in particles.indices {
+            particles[i].y += particles[i].speed
+            if isSnow {
+                // Horizontal drift for snow
+                particles[i].x += CGFloat.random(in: -0.5...0.5)
+            }
+            // Reset when off-screen
+            if particles[i].y > h {
+                particles[i].y = -particles[i].size
+                particles[i].x = CGFloat.random(in: 0...w)
+            }
+            // Wrap horizontal
+            if particles[i].x < 0 { particles[i].x = w }
+            if particles[i].x > w { particles[i].x = 0 }
+        }
     }
 
     // MARK: - Collision Avoidance
@@ -600,13 +820,14 @@ struct FarmSceneView: View {
 // MARK: - Sort Order
 
 enum RepoSortOrder: String, CaseIterable {
-    case health, name, lastCommit
+    case health, name, lastCommit, totalCommits
 
     var label: String {
         switch self {
         case .health: "Health"
         case .name: "Name"
         case .lastCommit: "Last Commit"
+        case .totalCommits: "Commits"
         }
     }
 }
