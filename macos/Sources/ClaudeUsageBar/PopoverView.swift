@@ -8,6 +8,7 @@ struct PopoverView: View {
     @ObservedObject var usageService: UsageService
     @ObservedObject var historyService: UsageHistoryService
     @ObservedObject var farmService: RepoFarmService
+    @ObservedObject var paceCoachService: PaceCoachService
     @State private var selectedTab: PopoverTab = .usage
     @State private var farmExpanded = false
 
@@ -32,7 +33,10 @@ struct PopoverView: View {
                 case .usage:
                     authenticatedContent
                 case .farm:
-                    FarmSceneView(farmService: farmService, isExpanded: $farmExpanded)
+                    let weather = FarmWeather.compute(
+                        utilization: usageService.currentUsage?.fiveHour?.utilization ?? 0
+                    )
+                    FarmSceneView(farmService: farmService, isExpanded: $farmExpanded, weather: weather)
                 }
             } else {
                 signInContent
@@ -69,6 +73,8 @@ struct PopoverView: View {
             if let extra = usage.extraUsage, extra.isEnabled {
                 ExtraUsageRow(extra: extra)
             }
+
+            paceAdvisoryRow
         } else if let error = usageService.lastError {
             Text(error)
                 .font(.caption)
@@ -83,6 +89,38 @@ struct PopoverView: View {
         Divider()
 
         footerView
+    }
+
+    // MARK: - Pace Advisory
+
+    @ViewBuilder
+    private var paceAdvisoryRow: some View {
+        if let advisory = paceCoachService.advisory {
+            HStack(spacing: 6) {
+                switch advisory {
+                case .onTrack(let remainingPercent):
+                    Image(systemName: "checkmark.circle")
+                        .foregroundStyle(.green)
+                    Text("On track — \(Int(remainingPercent))% budget remaining")
+                        .foregroundStyle(.green)
+                case .hitsLimit(let hours, let minutes):
+                    Image(systemName: "clock")
+                        .foregroundStyle(.orange)
+                    Text("Hits limit in ~\(hours)h \(minutes)m at this pace")
+                        .foregroundStyle(.orange)
+                case .slowDown:
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(.red)
+                    Text("Slow down — faster than usual")
+                        .foregroundStyle(.red)
+                }
+            }
+            .font(.caption.weight(.medium))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity)
+            .background(.gray.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+        }
     }
 
     // MARK: - Sign In
