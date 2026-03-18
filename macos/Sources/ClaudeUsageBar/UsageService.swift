@@ -66,6 +66,7 @@ final class UsageService: ObservableObject {
     }
 
     private func requestNotificationAuth() {
+        guard Bundle.main.bundleIdentifier != nil else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
             Task { @MainActor in self.notificationsAuthorized = granted }
         }
@@ -349,6 +350,7 @@ final class UsageService: ObservableObject {
     }
 
     private func sendUsageNotification(utilization: Double) {
+        guard Bundle.main.bundleIdentifier != nil else { return }
         let content = UNMutableNotificationContent()
         content.title = "Claude Usage Alert"
         content.body = String(format: "5-hour usage at %.0f%%. Consider slowing down to avoid rate limiting.", utilization)
