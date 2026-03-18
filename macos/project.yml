@@ -33,6 +33,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.local.ClaudeUsageBar
         PRODUCT_NAME: Claude Usage Bar
+        PRODUCT_MODULE_NAME: ClaudeUsageBar
         MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_VERSION: "6.0"
@@ -50,5 +51,8 @@ targets:
     settings:
       base:
         SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: true
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Claude Usage Bar.app/Contents/MacOS/Claude Usage Bar"
     dependencies:
       - target: ClaudeUsageBar

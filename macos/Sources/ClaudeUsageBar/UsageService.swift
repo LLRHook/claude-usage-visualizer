@@ -119,6 +119,12 @@ final class UsageService: ObservableObject {
         await exchangeCodeForTokens(code: code)
     }
 
+    func cancelOAuthFlow() {
+        isAwaitingCode = false
+        codeVerifier = nil
+        oauthState = nil
+    }
+
     func signOut() {
         credentials = nil
         isAuthenticated = false
@@ -235,7 +241,7 @@ final class UsageService: ObservableObject {
 
     // MARK: - API Requests
 
-    func fetchUsage() async {
+    func fetchUsage(retried: Bool = false) async {
         guard let creds = credentials else { return }
 
         guard await refreshTokenIfNeeded() else {
@@ -272,9 +278,8 @@ final class UsageService: ObservableObject {
                 checkUsageAlert()
 
             case 401:
-                if await refreshTokenIfNeeded() {
-                    // Retry once with new token
-                    await fetchUsage()
+                if !retried, await refreshTokenIfNeeded() {
+                    await fetchUsage(retried: true)
                 } else {
                     signOut()
                 }

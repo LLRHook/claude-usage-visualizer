@@ -53,12 +53,20 @@ struct UsageBucket: Codable {
         return UsageBucket(utilization: utilization, resetsAt: previous?.resetsAt)
     }
 
-    private static func parseISO8601(_ string: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: string) { return date }
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: string)
+    private nonisolated(unsafe) static let isoFormatterFrac: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private nonisolated(unsafe) static let isoFormatterNoFrac: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    static func parseISO8601(_ string: String) -> Date? {
+        isoFormatterFrac.date(from: string) ?? isoFormatterNoFrac.date(from: string)
     }
 }
 

@@ -1,5 +1,25 @@
 import Foundation
 
+// MARK: - Shared Paths
+
+enum AppPaths {
+    static let configDir: URL = {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/claude-usage-bar")
+    }()
+
+    static let credentialsFile = configDir.appendingPathComponent("credentials.json")
+    static let historyFile = configDir.appendingPathComponent("history.json")
+    static let farmFile = configDir.appendingPathComponent("farm.json")
+
+    static func ensureConfigDir() throws {
+        try FileManager.default.createDirectory(
+            at: configDir, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+    }
+}
+
 struct StoredCredentials: Codable {
     var accessToken: String
     var refreshToken: String?
@@ -16,17 +36,10 @@ struct StoredCredentials: Codable {
 final class StoredCredentialsStore: Sendable {
     static let shared = StoredCredentialsStore()
 
-    private let configDir: URL = {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        return home.appendingPathComponent(".config/claude-usage-bar")
-    }()
-
-    private var credentialsFile: URL {
-        configDir.appendingPathComponent("credentials.json")
-    }
+    private var credentialsFile: URL { AppPaths.credentialsFile }
 
     private var legacyTokenFile: URL {
-        configDir.appendingPathComponent("token")
+        AppPaths.configDir.appendingPathComponent("token")
     }
 
     func load() -> StoredCredentials? {
@@ -45,7 +58,7 @@ final class StoredCredentialsStore: Sendable {
     }
 
     func save(_ credentials: StoredCredentials) throws {
-        try ensureConfigDir()
+        try AppPaths.ensureConfigDir()
         let data = try JSONEncoder.iso8601Encoder.encode(credentials)
         try data.write(to: credentialsFile, options: .atomic)
         try FileManager.default.setAttributes(
@@ -55,16 +68,6 @@ final class StoredCredentialsStore: Sendable {
 
     func delete() {
         try? FileManager.default.removeItem(at: credentialsFile)
-    }
-
-    private func ensureConfigDir() throws {
-        var isDir: ObjCBool = false
-        if !FileManager.default.fileExists(atPath: configDir.path, isDirectory: &isDir) {
-            try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
-            try FileManager.default.setAttributes(
-                [.posixPermissions: 0o700], ofItemAtPath: configDir.path
-            )
-        }
     }
 }
 

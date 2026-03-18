@@ -86,10 +86,10 @@ final class PaceCoachService: ObservableObject {
         let currentHour = calendar.component(.hour, from: Date())
 
         var hourRates: [Double] = []
-        let sortedAll = dataPoints.sorted { $0.timestamp < $1.timestamp }
-        for i in 1..<sortedAll.count {
-            let prev = sortedAll[i - 1]
-            let curr = sortedAll[i]
+        // dataPoints are already in chronological order from recordDataPoint
+        for i in 1..<dataPoints.count {
+            let prev = dataPoints[i - 1]
+            let curr = dataPoints[i]
             let prevHour = calendar.component(.hour, from: prev.timestamp)
             let currHour = calendar.component(.hour, from: curr.timestamp)
             guard prevHour == currentHour && currHour == currentHour else { continue }

@@ -12,12 +12,8 @@ final class RepoFarmService: ObservableObject {
     private var pollingTask: Task<Void, Never>?
     private var flushTask: Task<Void, Never>?
 
-    private let farmFile: URL = {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        return home.appendingPathComponent(".config/claude-usage-bar/farm.json")
-    }()
-
-    private let penBounds = CGRect(x: 20, y: 20, width: 360, height: 360)
+    private let farmFile = AppPaths.farmFile
+    private let penBounds = FarmState.penBounds
 
     init() {
         loadState()
@@ -160,18 +156,12 @@ final class RepoFarmService: ObservableObject {
 
     private func reconcile(repos: [GHRepoEntry], activities: [String: (recent: Int, total: Int)]) {
         let existingByID = Dictionary(uniqueKeysWithValues: state.cows.map { ($0.id, $0) })
-        let iso8601 = ISO8601DateFormatter()
-        iso8601.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let iso8601NoFrac = ISO8601DateFormatter()
-        iso8601NoFrac.formatOptions = [.withInternetDateTime]
         let now = Date()
         var newCows: [RepoCow] = []
 
         for repo in repos {
             let key = "\(repo.owner.login)/\(repo.name)"
-            let pushedAt = iso8601.date(from: repo.pushedAt)
-                ?? iso8601NoFrac.date(from: repo.pushedAt)
-                ?? now
+            let pushedAt = UsageBucket.parseISO8601(repo.pushedAt) ?? now
             let activity = activities[key]
             let recentCommits = activity?.recent ?? 0
             let totalCommits = activity?.total ?? 0
@@ -272,9 +262,7 @@ final class RepoFarmService: ObservableObject {
     private func loadState() {
         guard let data = try? Data(contentsOf: farmFile) else { return }
         do {
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            state = try decoder.decode(FarmState.self, from: data)
+            state = try JSONDecoder.iso8601Decoder.decode(FarmState.self, from: data)
         } catch {
             let backup = farmFile.deletingPathExtension().appendingPathExtension("backup.json")
             try? FileManager.default.moveItem(at: farmFile, to: backup)
@@ -285,14 +273,8 @@ final class RepoFarmService: ObservableObject {
     func flushToDisk() {
         state.cows = cows.isEmpty ? state.cows : cows
         do {
-            let dir = farmFile.deletingLastPathComponent()
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [
-                .posixPermissions: 0o700
-            ])
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            encoder.outputFormatting = [.sortedKeys]
-            let data = try encoder.encode(state)
+            try AppPaths.ensureConfigDir()
+            let data = try JSONEncoder.iso8601Encoder.encode(state)
             try data.write(to: farmFile, options: .atomic)
         } catch {
             // Silently fail — next flush will retry

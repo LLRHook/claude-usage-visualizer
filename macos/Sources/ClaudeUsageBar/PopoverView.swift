@@ -172,7 +172,7 @@ struct PopoverView: View {
                 .onSubmit { submitCode() }
             HStack {
                 Button("Cancel") {
-                    usageService.isAwaitingCode = false
+                    usageService.cancelOAuthFlow()
                     codeInput = ""
                 }
                 .buttonStyle(.borderless)
@@ -219,11 +219,7 @@ struct PopoverView: View {
     }
 
     private func relativeTime(since date: Date) -> String {
-        let seconds = Int(-date.timeIntervalSinceNow)
-        if seconds < 60 { return "Updated \(seconds)s ago" }
-        let minutes = seconds / 60
-        let secs = seconds % 60
-        return "Updated \(minutes)m \(secs)s ago"
+        "Updated \(relativeDate(date))"
     }
 }
 

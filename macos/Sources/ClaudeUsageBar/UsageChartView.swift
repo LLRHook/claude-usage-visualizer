@@ -203,16 +203,16 @@ struct UsageChartView: View {
 
     private func hoverDataPoint(at x: CGFloat, points: [UsageDataPoint]) -> UsageDataPoint? {
         guard points.count >= 2 else { return nil }
-        let sorted = points.sorted { $0.timestamp < $1.timestamp }
-        let startTime = sorted.first!.timestamp.timeIntervalSince1970
-        let endTime = sorted.last!.timestamp.timeIntervalSince1970
+        // Points are already sorted by time from downsampledPoints
+        let startTime = points.first!.timestamp.timeIntervalSince1970
+        let endTime = points.last!.timestamp.timeIntervalSince1970
         let totalWidth: CGFloat = 280
         let fraction = max(0, min(1, Double(x) / Double(totalWidth)))
         let targetTime = startTime + (endTime - startTime) * fraction
 
-        var closest = sorted[0]
+        var closest = points[0]
         var minDist = abs(closest.timestamp.timeIntervalSince1970 - targetTime)
-        for point in sorted {
+        for point in points {
             let dist = abs(point.timestamp.timeIntervalSince1970 - targetTime)
             if dist < minDist {
                 minDist = dist
@@ -222,19 +222,31 @@ struct UsageChartView: View {
         return closest
     }
 
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f
+    }()
+    private static let weekdayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "EEE"
+        return f
+    }()
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
+        return f
+    }()
+
     private func xAxisLabel(for date: Date) -> String {
-        let formatter = DateFormatter()
         switch selectedRange {
-        case .hour1, .hour6:
-            formatter.dateFormat = "HH:mm"
-        case .day1:
-            formatter.dateFormat = "HH:mm"
+        case .hour1, .hour6, .day1:
+            Self.timeFormatter.string(from: date)
         case .day7:
-            formatter.dateFormat = "EEE"
+            Self.weekdayFormatter.string(from: date)
         case .day30:
-            formatter.dateFormat = "MMM d"
+            Self.dateFormatter.string(from: date)
         }
-        return formatter.string(from: date)
     }
 
     private func legendItem(color: Color, label: String) -> some View {

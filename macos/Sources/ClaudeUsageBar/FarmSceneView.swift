@@ -13,11 +13,8 @@ struct FarmSceneView: View {
 
     private let fenceColor = Color(red: 0.55, green: 0.35, blue: 0.15)
 
-    // The full farm is always this size — viewport clips it
     private let farmSize = CGSize(width: 400, height: 400)
-    private var penBounds: CGRect {
-        CGRect(x: 20, y: 20, width: farmSize.width - 40, height: farmSize.height - 40)
-    }
+    private var penBounds: CGRect { FarmState.penBounds }
 
     private var viewportWidth: CGFloat { isExpanded ? 400 : 290 }
     private var viewportHeight: CGFloat { isExpanded ? 400 : 240 }
@@ -100,8 +97,8 @@ struct FarmSceneView: View {
                             Button {
                                 filterTier = tier
                             } label: {
-                                if filterTier == tier { Label(tier.rawValue.capitalized, systemImage: "checkmark") }
-                                else { Text(tier.rawValue.capitalized) }
+                                if filterTier == tier { Label(tier.displayName, systemImage: "checkmark") }
+                                else { Text(tier.displayName) }
                             }
                         }
                     }
@@ -120,7 +117,7 @@ struct FarmSceneView: View {
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "line.3.horizontal.decrease.circle")
-                        Text(filterTier?.rawValue.capitalized ?? "Filter")
+                        Text(filterTier?.displayName ?? "Filter")
                     }
                     .font(.caption)
                 }
@@ -810,10 +807,7 @@ struct FarmSceneView: View {
     // MARK: - Helpers
 
     private func relativeTime(since date: Date) -> String {
-        let seconds = Int(-date.timeIntervalSinceNow)
-        if seconds < 60 { return "Scanned \(seconds)s ago" }
-        let minutes = seconds / 60
-        return "Scanned \(minutes)m ago"
+        "Scanned \(relativeDate(date))"
     }
 }
 

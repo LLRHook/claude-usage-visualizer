@@ -14,11 +14,7 @@ struct CowView: View {
 
     private var legPhase: Double {
         guard !isGrazing, !isSleeping else { return 0 }
-        var h: UInt64 = 5381
-        for byte in cow.id.utf8 {
-            h = ((h << 5) &+ h) &+ UInt64(byte)
-        }
-        let hashOffset = Double(h % 1000) / 1000.0 * .pi * 2
+        let hashOffset = Double(cow.id.djb2Hash % 1000) / 1000.0 * .pi * 2
         return animationDate.timeIntervalSinceReferenceDate * .pi * 8 + hashOffset
     }
 
@@ -306,15 +302,7 @@ struct CowView: View {
             }
     }
 
-    private var healthBarColor: Color {
-        switch tier {
-        case .thriving: .green
-        case .happy:    .green.opacity(0.8)
-        case .meh:      .yellow
-        case .sad:      .orange
-        case .dead:     .red
-        }
-    }
+    private var healthBarColor: Color { tier.tierColor }
 
     // MARK: - Hover Label
 
@@ -361,7 +349,7 @@ struct CowDetailView: View {
 
             HStack(spacing: 4) {
                 Circle().fill(tier.tierColor).frame(width: 8, height: 8)
-                Text(tier.rawValue.capitalized)
+                Text(tier.displayName)
                     .font(.caption.weight(.medium))
             }
             .padding(.horizontal, 8)

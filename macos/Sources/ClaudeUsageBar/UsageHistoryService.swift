@@ -5,12 +5,9 @@ import AppKit
 final class UsageHistoryService: ObservableObject {
     @Published private(set) var dataPoints: [UsageDataPoint] = []
 
-    private let historyFile: URL = {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        return home.appendingPathComponent(".config/claude-usage-bar/history.json")
-    }()
-
+    private let historyFile = AppPaths.historyFile
     private var flushTask: Task<Void, Never>?
+    private var isDirty = false
     private let maxAge: TimeInterval = 30 * 24 * 3600 // 30 days
 
     init() {
@@ -28,6 +25,7 @@ final class UsageHistoryService: ObservableObject {
     func recordDataPoint(pct5h: Double, pct7d: Double) {
         let point = UsageDataPoint(timestamp: Date(), pct5h: pct5h, pct7d: pct7d)
         dataPoints.append(point)
+        isDirty = true
     }
 
     func downsampledPoints(for range: TimeRange) -> [UsageDataPoint] {
@@ -58,9 +56,7 @@ final class UsageHistoryService: ObservableObject {
     func loadHistory() {
         guard let data = try? Data(contentsOf: historyFile) else { return }
         do {
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            var points = try decoder.decode([UsageDataPoint].self, from: data)
+            var points = try JSONDecoder.iso8601Decoder.decode([UsageDataPoint].self, from: data)
             let cutoff = Date().addingTimeInterval(-maxAge)
             points.removeAll { $0.timestamp < cutoff }
             dataPoints = points
@@ -73,12 +69,11 @@ final class UsageHistoryService: ObservableObject {
     }
 
     func flushToDisk() {
+        guard isDirty else { return }
         do {
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            encoder.outputFormatting = [.sortedKeys]
-            let data = try encoder.encode(dataPoints)
+            let data = try JSONEncoder.iso8601Encoder.encode(dataPoints)
             try data.write(to: historyFile, options: .atomic)
+            isDirty = false
         } catch {
             // Silently fail — next flush will retry
         }

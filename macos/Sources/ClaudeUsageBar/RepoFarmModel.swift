@@ -167,11 +167,7 @@ struct RepoCow: Codable, Identifiable, Hashable {
     }
 
     var appearance: CowAppearance {
-        var seed: UInt64 = 5381
-        for byte in id.utf8 {
-            seed = ((seed << 5) &+ seed) &+ UInt64(byte)
-        }
-        var rng = SeededRNG(seed: seed)
+        var rng = SeededRNG(seed: id.djb2Hash)
         let spots: [(CGFloat, CGFloat)] = (0..<3).map { _ in
             (CGFloat.random(in: -8...8, using: &rng),
              CGFloat.random(in: -5...5, using: &rng))
@@ -191,6 +187,8 @@ struct RepoCow: Codable, Identifiable, Hashable {
 }
 
 struct FarmState: Codable {
+    static let penBounds = CGRect(x: 20, y: 20, width: 360, height: 360)
+
     var cows: [RepoCow]
     var lastScanDate: Date?
     var githubUsername: String?
@@ -251,12 +249,28 @@ enum HealthTier: String, CaseIterable, Hashable {
         }
     }
 
+    var displayName: String {
+        rawValue.capitalized
+    }
+
     /// Color for utilization percentage (usage gauges, menu bar dot)
     static func utilizationColor(for value: Double) -> Color {
         if value < 40 { return .green }
         if value < 60 { return .yellow }
         if value < 80 { return .orange }
         return .red
+    }
+}
+
+// MARK: - String Hashing
+
+extension String {
+    var djb2Hash: UInt64 {
+        var hash: UInt64 = 5381
+        for byte in utf8 {
+            hash = ((hash << 5) &+ hash) &+ UInt64(byte)
+        }
+        return hash
     }
 }
 
