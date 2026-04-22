@@ -34,6 +34,9 @@ Sits in your macOS menu bar and displays your Claude usage stats at a glance. Cl
 ## Building
 
 ```bash
+# Generate the ignored Xcode project from macos/project.yml
+make generate
+
 # Build release
 make build
 
