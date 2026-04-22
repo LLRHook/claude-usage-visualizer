@@ -5,6 +5,7 @@ Claude Usage Bar is a native macOS menu bar app with Sparkle updates. A public r
 ## Preflight
 
 ```bash
+make generate
 make clean
 make build
 ```
@@ -27,6 +28,6 @@ Run the app locally with `make run`, connect it to the mock server or a real Cla
 
 ## Repository Status
 
-- CI now checks package resolution and debug build on macOS.
+- CI generates the ignored Xcode project, checks package resolution, and runs a debug build on macOS.
 - License file is still required before public open-source distribution.
 - Sparkle signing keys, Apple credentials, and update-host credentials must remain outside the repository.

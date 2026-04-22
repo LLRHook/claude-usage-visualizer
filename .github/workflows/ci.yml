@@ -21,6 +21,12 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_16.4.app
 
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: make generate
+
       - name: Resolve packages
         run: |
           xcodebuild -resolvePackageDependencies \
