@@ -1,0 +1,17 @@
+[package]
+name = "pace-core"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.93"
+publish = false
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[profile.release]
+panic = "abort"
+debug = 0
+
+[profile.dev]
+debug = 0
+incremental = false

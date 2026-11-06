@@ -10,3 +10,7 @@ xcuserdata/
 __pycache__/
 *.pyc
 .claude/
+native/pace-core/target/
+macos/Native/lib/
+.vv/
+.cargo-target/

@@ -20,6 +20,10 @@ targets:
       - path: Sources/ClaudeUsageBar
         excludes:
           - "Resources/**"
+      - path: Native
+        excludes:
+          - "lib/**"
+          - "include/module.modulemap"
     resources:
       - path: Sources/ClaudeUsageBar/Resources
         buildPhase: resources
@@ -40,6 +44,10 @@ targets:
         GENERATE_INFOPLIST_FILE: false
         CODE_SIGN_ENTITLEMENTS: ClaudeUsageBar.entitlements
         CODE_SIGN_STYLE: Automatic
+        SWIFT_INCLUDE_PATHS: "$(inherited) $(SRCROOT)/Native/include"
+        HEADER_SEARCH_PATHS: "$(inherited) $(SRCROOT)/Native/include"
+        LIBRARY_SEARCH_PATHS: "$(inherited) $(SRCROOT)/Native/lib"
+        OTHER_LDFLAGS: "$(inherited) -lpace_core"
     dependencies:
       - package: Sparkle
 
@@ -54,5 +62,6 @@ targets:
         GENERATE_INFOPLIST_FILE: true
         BUNDLE_LOADER: "$(TEST_HOST)"
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Claude Usage Bar.app/Contents/MacOS/Claude Usage Bar"
+        SWIFT_INCLUDE_PATHS: "$(inherited) $(SRCROOT)/Native/include"
     dependencies:
       - target: ClaudeUsageBar

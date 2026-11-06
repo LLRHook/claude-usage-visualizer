@@ -5,20 +5,23 @@ import AppKit
 final class UsageHistoryService: ObservableObject {
     @Published private(set) var dataPoints: [UsageDataPoint] = []
 
-    private let historyFile = AppPaths.historyFile
+    private let historyFile: URL
     private var flushTask: Task<Void, Never>?
     private var isDirty = false
     private let maxAge: TimeInterval = 30 * 24 * 3600 // 30 days
 
-    init() {
+    init(historyFile: URL? = nil, automaticFlush: Bool = true) {
+        self.historyFile = historyFile ?? AppPaths.historyFile
         loadHistory()
-        startPeriodicFlush()
-        NotificationCenter.default.addObserver(
-            forName: NSApplication.willTerminateNotification,
-            object: nil, queue: .main
-        ) { [weak self] _ in
-            guard let self else { return }
-            Task { @MainActor in self.flushToDisk() }
+        if automaticFlush {
+            startPeriodicFlush()
+            NotificationCenter.default.addObserver(
+                forName: NSApplication.willTerminateNotification,
+                object: nil, queue: .main
+            ) { [weak self] _ in
+                guard let self else { return }
+                Task { @MainActor in self.flushToDisk() }
+            }
         }
     }
 
