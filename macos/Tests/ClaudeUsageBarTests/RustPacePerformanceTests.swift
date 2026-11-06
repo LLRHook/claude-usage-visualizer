@@ -5,6 +5,7 @@ import XCTest
 
 @MainActor
 final class RustPacePerformanceTests: XCTestCase {
+    private enum BenchmarkFailure: Error { case outputMismatch }
     @inline(never)
     private func native(_ points: [UsageDataPoint], current: Double,
                         now: Date, calendar: Calendar) -> PaceAdvisory? {
@@ -35,7 +36,9 @@ final class RustPacePerformanceTests: XCTestCase {
             }
             let current = points.last!.pct5h * 100
             let expected = reference(points, current: current, now: now, calendar: calendar)
-            XCTAssertEqual(native(points, current: current, now: now, calendar: calendar), expected)
+            let warmNative = native(points, current: current, now: now, calendar: calendar)
+            XCTAssertEqual(warmNative, expected)
+            guard warmNative == expected else { throw BenchmarkFailure.outputMismatch }
             // The calls above warm both paths. Alternate measured order and
             // check every result; no timing budget is asserted on shared CI.
             var samples: [String: [Double]] = ["swift": [], "rust_bridge": []]
@@ -48,6 +51,7 @@ final class RustPacePerformanceTests: XCTestCase {
                         : native(points, current: current, now: now, calendar: calendar)
                     let milliseconds = Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000
                     XCTAssertEqual(result, expected)
+                    guard result == expected else { throw BenchmarkFailure.outputMismatch }
                     samples[collector]!.append(milliseconds)
                 }
             }
