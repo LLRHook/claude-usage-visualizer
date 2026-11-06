@@ -4,10 +4,19 @@ import XCTest
 @MainActor
 final class UsageHistoryServiceTests: XCTestCase {
 
+    private func makeService() -> UsageHistoryService {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("claude-usage-history-test-\(UUID().uuidString)", isDirectory: true)
+        try! FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try FileManager.default.removeItem(at: directory) }
+        return UsageHistoryService(historyFile: directory.appendingPathComponent("history.json"),
+                                   automaticFlush: false)
+    }
+
     // MARK: - recordDataPoint
 
     func testRecordDataPointAppendsOneEntry() {
-        let service = UsageHistoryService()
+        let service = makeService()
         let countBefore = service.dataPoints.count
 
         service.recordDataPoint(pct5h: 0.25, pct7d: 0.50)
@@ -19,7 +28,7 @@ final class UsageHistoryServiceTests: XCTestCase {
     }
 
     func testRecordMultipleDataPointsPreservesOrder() {
-        let service = UsageHistoryService()
+        let service = makeService()
         let countBefore = service.dataPoints.count
 
         service.recordDataPoint(pct5h: 0.10, pct7d: 0.20)
@@ -36,7 +45,7 @@ final class UsageHistoryServiceTests: XCTestCase {
     }
 
     func testRecordDataPointUsesRecentTimestamp() {
-        let service = UsageHistoryService()
+        let service = makeService()
         let before = Date()
         service.recordDataPoint(pct5h: 0.10, pct7d: 0.20)
         let after = Date()
@@ -50,7 +59,7 @@ final class UsageHistoryServiceTests: XCTestCase {
     // MARK: - downsampledPoints: returns all when count < targetPointCount
 
     func testDownsampledPointsReturnsPointsWithinRange() {
-        let service = UsageHistoryService()
+        let service = makeService()
 
         // Record a few points (well under any targetPointCount)
         for _ in 0..<5 {
@@ -64,7 +73,7 @@ final class UsageHistoryServiceTests: XCTestCase {
     }
 
     func testDownsampledPointsPreservesUniformValues() {
-        let service = UsageHistoryService()
+        let service = makeService()
 
         // Record points with uniform values
         for _ in 0..<5 {
@@ -84,7 +93,7 @@ final class UsageHistoryServiceTests: XCTestCase {
     // MARK: - downsampledPoints: range behavior
 
     func testDownsampledPointsAllRangesReturnData() {
-        let service = UsageHistoryService()
+        let service = makeService()
 
         // Record a point at "now" -- it should be within every time range
         service.recordDataPoint(pct5h: 0.42, pct7d: 0.78)
@@ -184,7 +193,7 @@ final class UsageHistoryServiceTests: XCTestCase {
     // MARK: - downsampledPoints: output is sorted by time
 
     func testDownsampledPointsAreSortedByTime() {
-        let service = UsageHistoryService()
+        let service = makeService()
         service.recordDataPoint(pct5h: 0.10, pct7d: 0.05)
         service.recordDataPoint(pct5h: 0.20, pct7d: 0.10)
 
